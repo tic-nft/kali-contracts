@@ -9,7 +9,7 @@ import './utils/ReentrancyGuard.sol';
 import './interfaces/IKaliDAOextension.sol';
 
 /// @notice Simple gas-optimized Kali DAO core module.
-contract KaliDAO is KaliDAOtoken, Multicall, ReentrancyGuard {
+contract LandDAO is KaliDAOtoken, Multicall, ReentrancyGuard {
     /*///////////////////////////////////////////////////////////////
                             EVENTS
     //////////////////////////////////////////////////////////////*/
