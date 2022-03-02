@@ -157,14 +157,14 @@ contract KaliDAO is KaliDAOtoken, Multicall, ReentrancyGuard {
         string memory name_,
         string memory symbol_,
         string memory docs_,
-        bool paused_,
+        //bool paused_,
         address[] memory extensions_,
         bytes[] memory extensionsData_,
         address[] calldata voters_,
         uint256[] calldata shares_,
         uint32[3] memory govSettings_,
         uint32[13] memory voteSettings_,
-        uint32[13] memory votePeriods_
+        uint16[13] memory votePeriods_
     ) public payable nonReentrant virtual {
         if (extensions_.length != extensionsData_.length) revert NoArrayParity();
 
@@ -178,7 +178,7 @@ contract KaliDAO is KaliDAOtoken, Multicall, ReentrancyGuard {
 
         if (govSettings_[2] <= 51 || govSettings_[2] > 100) revert SupermajorityBounds();
 
-        KaliDAOtoken._init(name_, symbol_, paused_, voters_, shares_);
+        KaliDAOtoken._init(name_, symbol_, true, voters_, shares_);
 
         if (extensions_.length != 0) {
             // cannot realistically overflow on human timescales
@@ -211,44 +211,45 @@ contract KaliDAO is KaliDAOtoken, Multicall, ReentrancyGuard {
         // proposalVoteTypes[ProposalType.BURN] = VoteType(voteSettings_[5]);
 
         proposalVoteTypes[ProposalType.CALL] = VoteType(voteSettings_[0]);
-        proposalVotePeriod[ProposalType.CALL] = votePeriods_[0];
 
         proposalVoteTypes[ProposalType.VPERIOD] = VoteType(voteSettings_[1]);
-        proposalVotePeriod[ProposalType.VPERIOD] = votePeriods_[1];
 
         // proposalVoteTypes[ProposalType.GPERIOD] = VoteType(voteSettings_[8]);
         
         proposalVoteTypes[ProposalType.QUORUM] = VoteType(voteSettings_[2]);
-        proposalVotePeriod[ProposalType.QUORUM] = votePeriods_[2];
         
         proposalVoteTypes[ProposalType.SUPERMAJORITY] = VoteType(voteSettings_[3]);
-        proposalVotePeriod[ProposalType.SUPERMAJORITY] = votePeriods_[3];
 
         proposalVoteTypes[ProposalType.TYPE] = VoteType(voteSettings_[4]);
-        proposalVotePeriod[ProposalType.TYPE] = votePeriods_[4];
         
         proposalVoteTypes[ProposalType.PAUSE] = VoteType(voteSettings_[5]);
-        proposalVotePeriod[ProposalType.PAUSE] = votePeriods_[5];
         
         proposalVoteTypes[ProposalType.EXTENSION] = VoteType(voteSettings_[6]);
-        proposalVotePeriod[ProposalType.EXTENSION] = votePeriods_[6];
 
         proposalVoteTypes[ProposalType.ESCAPE] = VoteType(voteSettings_[7]);
-        proposalVotePeriod[ProposalType.ESCAPE] = votePeriods_[7];
 
         proposalVoteTypes[ProposalType.DOCS] = VoteType(voteSettings_[8]);
-        proposalVotePeriod[ProposalType.DOCS] = votePeriods_[8];
 
         proposalVoteTypes[ProposalType.CAPITALCALL] = VoteType(voteSettings_[9]);
-        proposalVotePeriod[ProposalType.CAPITALCALL] = votePeriods_[9];
 
         proposalVoteTypes[ProposalType.SELL] = VoteType(voteSettings_[10]);
-        proposalVotePeriod[ProposalType.SELL] = votePeriods_[10];
 
         proposalVoteTypes[ProposalType.PURCHASE] = VoteType(voteSettings_[11]);
-        proposalVotePeriod[ProposalType.PURCHASE] = votePeriods_[11];
 
         proposalVoteTypes[ProposalType.MANAGER] = VoteType(voteSettings_[12]);
+        
+        proposalVotePeriod[ProposalType.CALL] = votePeriods_[0];
+        proposalVotePeriod[ProposalType.VPERIOD] = votePeriods_[1];
+        proposalVotePeriod[ProposalType.QUORUM] = votePeriods_[2];
+        proposalVotePeriod[ProposalType.SUPERMAJORITY] = votePeriods_[3];
+        proposalVotePeriod[ProposalType.TYPE] = votePeriods_[4];
+        proposalVotePeriod[ProposalType.PAUSE] = votePeriods_[5];
+        proposalVotePeriod[ProposalType.EXTENSION] = votePeriods_[6];
+        proposalVotePeriod[ProposalType.ESCAPE] = votePeriods_[7];
+        proposalVotePeriod[ProposalType.DOCS] = votePeriods_[8];
+        proposalVotePeriod[ProposalType.CAPITALCALL] = votePeriods_[9];
+        proposalVotePeriod[ProposalType.SELL] = votePeriods_[10];
+        proposalVotePeriod[ProposalType.PURCHASE] = votePeriods_[11];
         proposalVotePeriod[ProposalType.MANAGER] = votePeriods_[12];
     }
 
@@ -460,10 +461,7 @@ contract KaliDAO is KaliDAOtoken, Multicall, ReentrancyGuard {
                     
                 // governance settings
                 if (prop.proposalType == ProposalType.VPERIOD)
-                    for (uint i = 0; i < prop.amounts.length; i++){
-                        // TODO: this is not the correct proposalVotePeriod being changed
-                        if (prop.amounts[i] != 0 && prop.amounts[i] < 365) proposalVotePeriod[prop.proposalType] = uint16(prop.amounts[i]);
-                    }
+                    proposalVotePeriod[ProposalType(prop.amounts[0])] = uint16(prop.amounts[1]);
                 
                 // if (prop.proposalType == ProposalType.GPERIOD) 
                 //     if (prop.amounts[0] != 0) gracePeriod = uint32(prop.amounts[0]);
