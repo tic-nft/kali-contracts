@@ -2,14 +2,14 @@
 
 pragma solidity >=0.8.4;
 
-import './KaliDAOtoken.sol';
+// import './KaliDAOtoken.sol';
 import './utils/Multicall.sol';
-//import './utils/NFThelper.sol';
+// import './utils/NFThelper.sol';
 import './utils/ReentrancyGuard.sol';
 import './interfaces/IKaliDAOextension.sol';
 
 /// @notice Simple gas-optimized Kali DAO core module.
-contract KaliDAO is KaliDAOtoken, Multicall, ReentrancyGuard {
+contract KaliDAO is Multicall, ReentrancyGuard {
     /*///////////////////////////////////////////////////////////////
                             EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -88,9 +88,17 @@ contract KaliDAO is KaliDAOtoken, Multicall, ReentrancyGuard {
         keccak256('SignVote(address signer,uint256 proposal,bool approve)');
 
     address public manager;  // user that gets funds for real world activity
-
     address public notary;  // lawyer that ensures proper release of funds to manager
     
+    uint8 public constant decimals = 18; /*unit scaling factor in erc20 `shares` accounting - '18' is default to match ETH & common erc20s*/
+    string public name; /*'name' for erc20 `shares` accounting*/
+    string public symbol; /*'symbol' for erc20 `shares` accounting*/
+
+    mapping(address => uint256) public balanceOf; /*maps `members` accounts to `shares` with erc20 accounting*/
+    mapping(address => uint256) public lootBalanceOf; /*maps `members` accounts to `shares` with erc20 accounting*/
+    uint96 public totalLoot; /*counter for total `loot` economic weight held by `members`*/
+    uint96 public totalSupply; /*counter for total `members` voting `shares` with erc20 accounting*/
+
     mapping(address => bool) public extensions;
 
     mapping(uint256 => Proposal) public proposals;
