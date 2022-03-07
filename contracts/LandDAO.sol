@@ -66,6 +66,9 @@ contract KaliDAO is Multicall, ReentrancyGuard {
 
     error NotExtension();
 
+    /* FROM KaliDAOToken */
+    error NoArrayParity();
+
     /*///////////////////////////////////////////////////////////////
                             DAO STORAGE
     //////////////////////////////////////////////////////////////*/
@@ -98,6 +101,10 @@ contract KaliDAO is Multicall, ReentrancyGuard {
     mapping(address => uint256) public lootBalanceOf; /*maps `members` accounts to `shares` with erc20 accounting*/
     uint96 public totalLoot; /*counter for total `loot` economic weight held by `members`*/
     uint96 public totalSupply; /*counter for total `members` voting `shares` with erc20 accounting*/
+
+    uint96 public daoValue; /* Used for capital calls to ensure fairness in minting new shares */
+
+    uint96 public propertyValue; /*the value of the property that is used to assess capital call raises*/
 
     mapping(address => bool) public extensions;
 
@@ -186,7 +193,11 @@ contract KaliDAO is Multicall, ReentrancyGuard {
 
         if (govSettings_[2] <= 51 || govSettings_[2] > 100) revert SupermajorityBounds();
 
-        KaliDAOtoken._init(name_, symbol_, true, voters_, shares_);
+        name = name_;
+        symbol = symbol_;
+        docs = docs_;
+
+        // KaliDAOtoken._init(name_, symbol_, true, voters_, shares_);
 
         if (extensions_.length != 0) {
             // cannot realistically overflow on human timescales
@@ -202,8 +213,6 @@ contract KaliDAO is Multicall, ReentrancyGuard {
                 }
             }
         }
-
-        docs = docs_;
         
         votingPeriod = govSettings_[0];
 
