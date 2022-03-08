@@ -7,10 +7,13 @@ import './utils/Multicall.sol';
 // import './utils/NFThelper.sol';
 import './utils/ReentrancyGuard.sol';
 import './interfaces/IKaliDAOextension.sol';
-import "@openzeppelin/contracts/access/Ownable.sol";
+import './interfaces/IERC20Permit.sol';
+import './libraries/SafeTransferLib.sol';
+// import "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @notice Simple gas-optimized Kali DAO core module.
-contract LandDAO is Multicall, ReentrancyGuard, Ownable {
+contract LandDAO is Multicall, ReentrancyGuard {
+    using SafeTransferLib for address;
     /*///////////////////////////////////////////////////////////////
                             EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -26,6 +29,10 @@ contract LandDAO is Multicall, ReentrancyGuard, Ownable {
     );
 
     event Transfer(address indexed from, address indexed to, uint256 amount);
+
+    event DividendDeposit(uint256 amount);
+
+    event Withdraw(address member, uint256 amount);
 
     event ProposalCancelled(address indexed proposer, uint256 indexed proposal);
 
@@ -80,6 +87,8 @@ contract LandDAO is Multicall, ReentrancyGuard, Ownable {
                             DAO STORAGE
     //////////////////////////////////////////////////////////////*/
 
+    uint256 constant DECIMAL_SPACES = 10**18;
+
     string public docs;
 
     uint256 private currentSponsoredProposal;
@@ -110,11 +119,13 @@ contract LandDAO is Multicall, ReentrancyGuard, Ownable {
 
     mapping(address => uint256) public balanceOf; /*maps `members` accounts to `shares` with erc20 accounting*/
     mapping(address => uint256) public lootBalanceOf; /*maps `members` accounts to `shares` with erc20 accounting*/
-    uint96 public totalLoot; /*counter for total `loot` economic weight held by `members`*/
+    uint256 public totalLoot; /*counter for total `loot` economic weight held by `members`*/
     uint256 public totalSupply; /*counter for total `members` voting `shares` with erc20 accounting*/
     address[] public members; /* needed to iterate the member list */
 
-    uint96 public daoValue; /* Used for capital calls to ensure fairness in minting new shares */
+    address dai;
+
+    // uint96 public daoValue; /* Used for capital calls to ensure fairness in minting new shares */
 
     uint96 public propertyValue; /*the value of the property that is used to assess capital call raises*/
 
@@ -190,11 +201,16 @@ contract LandDAO is Multicall, ReentrancyGuard, Ownable {
                             CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
+    constructor(){
+        manager = msg.sender;
+    }
+
     function init(
         string memory name_,
         string memory symbol_,
         string memory docs_,
         //bool paused_,
+        address dai_,
         address[] memory extensions_,
         bytes[] memory extensionsData_,
         // address[] calldata voters_,
@@ -220,12 +236,13 @@ contract LandDAO is Multicall, ReentrancyGuard, Ownable {
         name = name_;
         symbol = symbol_;
         docs = docs_;
+        dai = dai_;
 
         INITIAL_CHAIN_ID = block.chainid;
         
         INITIAL_DOMAIN_SEPARATOR = _computeDomainSeparator();
 
-        manager = owner();
+        // manager = owner();
         _mint(manager, 5000);
         // for (uint x = 0; x < voters_.length; x++){
         //     _mint(voters_[x], shares_[x]);
@@ -644,8 +661,37 @@ contract LandDAO is Multicall, ReentrancyGuard, Ownable {
                             EXTRANIOUS 
     //////////////////////////////////////////////////////////////*/
 
-    function depositDividend(uint _dividend) public onlyManager returns(bool) {
+
+    function depositDividend(
+        uint256 value,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r, 
+        bytes32 s
+    ) public onlyManager nonReentrant {
+        IERC20Permit token = IERC20Permit(dai);
+        token.permit(
+            msg.sender,
+            address(this),
+            value,
+            deadline,
+            v,
+            r,
+            s
+        );
+        dai._safeTransferFrom(msg.sender, address(this), value);
+        for (uint x = 0; x < members.length; x++){
+            uint addition = (value * balanceOf[members[x]] * DECIMAL_SPACES) / totalSupply;
+            lootBalanceOf[members[x]] += addition;
+            totalLoot += addition;
+        }
+    }
+
+    function withdraw(uint256 amount) public nonReentrant{
+        if (lootBalanceOf[msg.sender] <= 0 || amount > lootBalanceOf[msg.sender]) revert NoLoot();
         
+        lootBalanceOf[msg.sender] -= amount;
+        dai._safeTransferFrom(address(this), msg.sender, amount);
     }
 
     function _safeCastTo32(uint256 x) internal pure virtual returns (uint32) {
