@@ -24,6 +24,8 @@ contract KaliDAO is Multicall, ReentrancyGuard {
         bytes[] payloads
     );
 
+    event Transfer(address indexed from, address indexed to, uint256 amount);
+
     event ProposalCancelled(address indexed proposer, uint256 indexed proposal);
 
     event ProposalSponsored(address indexed sponsor, uint256 indexed proposal);
@@ -69,6 +71,10 @@ contract KaliDAO is Multicall, ReentrancyGuard {
     /* FROM KaliDAOToken */
     error NoArrayParity();
 
+    error Uint32max();
+
+    error InvalidSignature();
+
     /*///////////////////////////////////////////////////////////////
                             DAO STORAGE
     //////////////////////////////////////////////////////////////*/
@@ -89,6 +95,10 @@ contract KaliDAO is Multicall, ReentrancyGuard {
     
     bytes32 public constant VOTE_HASH = 
         keccak256('SignVote(address signer,uint256 proposal,bool approve)');
+
+    uint256 internal INITIAL_CHAIN_ID;
+
+    bytes32 internal INITIAL_DOMAIN_SEPARATOR;
 
     address public manager;  // user that gets funds for real world activity
     address public notary;  // lawyer that ensures proper release of funds to manager
@@ -196,6 +206,10 @@ contract KaliDAO is Multicall, ReentrancyGuard {
         name = name_;
         symbol = symbol_;
         docs = docs_;
+
+        INITIAL_CHAIN_ID = block.chainid;
+        
+        INITIAL_DOMAIN_SEPARATOR = _computeDomainSeparator();
 
         // KaliDAOtoken._init(name_, symbol_, true, voters_, shares_);
 
@@ -413,7 +427,10 @@ contract KaliDAO is Multicall, ReentrancyGuard {
             if (block.timestamp > prop.creationTime + votingPeriod) revert NotVoteable();
         }
 
-        uint96 weight = getPriorVotes(signer, prop.creationTime);
+        // we are not doing delegation
+        // uint96 weight = getPriorVotes(signer, prop.creationTime);
+
+        uint96 weight = balanceOf[signer];
         
         // this is safe from overflow because `yesVotes` and `noVotes` are capped by `totalSupply`
         // which is checked for overflow in `KaliDAOtoken` contract
@@ -492,8 +509,8 @@ contract KaliDAO is Multicall, ReentrancyGuard {
                 if (prop.proposalType == ProposalType.TYPE) 
                     proposalVoteTypes[ProposalType(prop.amounts[0])] = VoteType(prop.amounts[1]);
                 
-                if (prop.proposalType == ProposalType.PAUSE) 
-                    _flipPause();
+                // if (prop.proposalType == ProposalType.PAUSE) 
+                //     _flipPause();
                 
                 if (prop.proposalType == ProposalType.EXTENSION) 
                     for (uint256 i; i < prop.accounts.length; i++) {
@@ -588,7 +605,42 @@ contract KaliDAO is Multicall, ReentrancyGuard {
         _mint(to, amount);
     }
 
-    function burnShares(address from, uint256 amount) public payable onlyExtension virtual {
-        _burn(from, amount);
+    function _mint(address to, uint256 amount) internal virtual {
+        totalSupply += amount;
+
+        // cannot overflow because the sum of all user
+        // balances can't exceed the max uint256 value
+        unchecked {
+            balanceOf[to] += amount;
+        }
+
+        emit Transfer(address(0), to, amount);
+    }
+
+    // function burnShares(address from, uint256 amount) public payable onlyExtension virtual {
+    //     _burn(from, amount);
+    // }
+
+    function _safeCastTo32(uint256 x) internal pure virtual returns (uint32) {
+        if (x > type(uint32).max) revert Uint32max();
+
+        return uint32(x);
+    }
+
+    function DOMAIN_SEPARATOR() public view virtual returns (bytes32) {
+        return block.chainid == INITIAL_CHAIN_ID ? INITIAL_DOMAIN_SEPARATOR : _computeDomainSeparator();
+    }
+
+    function _computeDomainSeparator() internal view virtual returns (bytes32) {
+        return 
+            keccak256(
+                abi.encode(
+                    keccak256('EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)'),
+                    keccak256(bytes(name)),
+                    keccak256('1'),
+                    block.chainid,
+                    address(this)
+                )
+            );
     }
 }
