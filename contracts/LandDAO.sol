@@ -7,9 +7,10 @@ import './utils/Multicall.sol';
 // import './utils/NFThelper.sol';
 import './utils/ReentrancyGuard.sol';
 import './interfaces/IKaliDAOextension.sol';
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @notice Simple gas-optimized Kali DAO core module.
-contract KaliDAO is Multicall, ReentrancyGuard {
+contract LandDAO is Multicall, ReentrancyGuard, Ownable {
     /*///////////////////////////////////////////////////////////////
                             EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -110,7 +111,8 @@ contract KaliDAO is Multicall, ReentrancyGuard {
     mapping(address => uint256) public balanceOf; /*maps `members` accounts to `shares` with erc20 accounting*/
     mapping(address => uint256) public lootBalanceOf; /*maps `members` accounts to `shares` with erc20 accounting*/
     uint96 public totalLoot; /*counter for total `loot` economic weight held by `members`*/
-    uint96 public totalSupply; /*counter for total `members` voting `shares` with erc20 accounting*/
+    uint256 public totalSupply; /*counter for total `members` voting `shares` with erc20 accounting*/
+    address[] public members; /* needed to iterate the member list */
 
     uint96 public daoValue; /* Used for capital calls to ensure fairness in minting new shares */
 
@@ -128,7 +130,9 @@ contract KaliDAO is Multicall, ReentrancyGuard {
     
     mapping(uint256 => mapping(address => bool)) public voted;
 
-    mapping(address => uint256) public lastYesVote;
+    mapping(uint256 => mapping(address => uint256)) public weights;
+
+    // mapping(address => uint256) public lastYesVote;
 
     enum ProposalType {
         // MINT, // add membership
@@ -163,8 +167,8 @@ contract KaliDAO is Multicall, ReentrancyGuard {
         uint256[] amounts; // value(s) to be minted/burned/spent; gov setting [0]
         bytes[] payloads; // data for CALL proposals
         uint256 prevProposal;
-        uint96 yesVotes;
-        uint96 noVotes;
+        uint256 yesVotes;
+        uint256 noVotes;
         uint32 creationTime;
         address proposer;
     }
@@ -172,6 +176,14 @@ contract KaliDAO is Multicall, ReentrancyGuard {
     struct ProposalState {
         bool passed;
         bool processed;
+    }
+
+    /**
+     * @dev Throws if called by any account other than the manager.
+     */
+    modifier onlyManager() {
+        require(msg.sender == manager, "Manager: caller is not the manager");
+        _;
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -185,13 +197,15 @@ contract KaliDAO is Multicall, ReentrancyGuard {
         //bool paused_,
         address[] memory extensions_,
         bytes[] memory extensionsData_,
-        address[] calldata voters_,
-        uint256[] calldata shares_,
+        // address[] calldata voters_,
+        // uint256[] calldata shares_,
         uint32[3] memory govSettings_,
         uint32[13] memory voteSettings_,
         uint16[13] memory votePeriods_
     ) public payable nonReentrant virtual {
         if (extensions_.length != extensionsData_.length) revert NoArrayParity();
+
+        // if (voters_.length != shares_.length) revert NoArrayParity();
 
         if (votingPeriod != 0) revert Initialized();
 
@@ -211,7 +225,11 @@ contract KaliDAO is Multicall, ReentrancyGuard {
         
         INITIAL_DOMAIN_SEPARATOR = _computeDomainSeparator();
 
-        // KaliDAOtoken._init(name_, symbol_, true, voters_, shares_);
+        manager = owner();
+        _mint(manager, 5000);
+        // for (uint x = 0; x < voters_.length; x++){
+        //     _mint(voters_[x], shares_[x]);
+        // }
 
         if (extensions_.length != 0) {
             // cannot realistically overflow on human timescales
@@ -342,6 +360,10 @@ contract KaliDAO is Multicall, ReentrancyGuard {
             proposer: msg.sender
         });
 
+        for (uint x = 0; x < members.length; x++){
+            weights[proposal][members[x]] = balanceOf[members[x]];
+        }
+
         if (selfSponsor) currentSponsoredProposal = proposal;
 
         emit NewProposal(msg.sender, proposal, proposalType, description, accounts, amounts, payloads);
@@ -430,15 +452,14 @@ contract KaliDAO is Multicall, ReentrancyGuard {
         // we are not doing delegation
         // uint96 weight = getPriorVotes(signer, prop.creationTime);
 
-        uint96 weight = balanceOf[signer];
+        uint256 weight = weights[proposal][signer];
         
         // this is safe from overflow because `yesVotes` and `noVotes` are capped by `totalSupply`
         // which is checked for overflow in `KaliDAOtoken` contract
         unchecked { 
             if (approve) {
                 prop.yesVotes += weight;
-
-                lastYesVote[signer] = proposal;
+                // lastYesVote[signer] = proposal;
             } else {
                 prop.noVotes += weight;
             }
@@ -595,9 +616,7 @@ contract KaliDAO is Multicall, ReentrancyGuard {
             (msg.sender, amount, extensionData);
         
         if (mint) {
-            if (amountOut != 0) _mint(msg.sender, amountOut); 
-        } else {
-            if (amountOut != 0) _burn(msg.sender, amount);
+            if (amountOut != 0) _mint(msg.sender, amountOut);
         }
     }
 
@@ -620,6 +639,14 @@ contract KaliDAO is Multicall, ReentrancyGuard {
     // function burnShares(address from, uint256 amount) public payable onlyExtension virtual {
     //     _burn(from, amount);
     // }
+
+    /*///////////////////////////////////////////////////////////////
+                            EXTRANIOUS 
+    //////////////////////////////////////////////////////////////*/
+
+    function depositDividend(uint _dividend) public onlyManager returns(bool) {
+        
+    }
 
     function _safeCastTo32(uint256 x) internal pure virtual returns (uint32) {
         if (x > type(uint32).max) revert Uint32max();
