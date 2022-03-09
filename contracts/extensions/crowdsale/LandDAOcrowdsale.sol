@@ -22,6 +22,10 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
 
     event ExtensionCalled(address indexed dao, address indexed purchaser, uint256 amountOut);
 
+    event FundsContributed(address user, uint256 contribution);
+
+    event FundsWithdrawn(address user, uint256 withdraw);
+    
     // error NullMultiplier();
 
     error SaleEnded();
@@ -31,6 +35,10 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
     // error NotListed();
 
     error PurchaseLimit();
+
+    error NotComplete();
+
+    error Distributed();
     
     IKaliAccessManager private immutable accessManager;
 
@@ -45,6 +53,8 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
     address[] internal members;
     address public fundingERC20;
     uint96 public purchaseLimit;
+    bool public complete;
+    bool public distributed;
 
     // struct Crowdsale {
     //     uint256 listId;
@@ -64,7 +74,7 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
 
     function setExtension(bytes calldata extensionData) public nonReentrant virtual {
         (address _purchaseToken, uint96 _purchaseLimit, uint256 _goal) 
-            = abi.decode(extensionData, (uint256, address, uint8, uint96, uint32, string));
+            = abi.decode(extensionData, (address, uint96, uint256));
         
         // if (purchaseMultiplier == 0) revert NullMultiplier();
         dao = msg.sender;
@@ -84,80 +94,86 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
     }
 
     function contribute(
-        IERC20Permit token, 
+        //IERC20Permit token, 
         uint256 value,
         uint256 deadline,
         uint8 v,
         bytes32 r, 
         bytes32 s
-    ) public virtual {
-        if(value < 0) revert BadValue();
+    ) public virtual nonReentrant {
         if(complete) revert SaleEnded();
+        if(value < purchaseLimit && value < (goal - totalFunds)) revert BadValue();
 
-        // TODO: Allowance is a setting not additive.  Call public allowance to find how much more is added.
+        uint256 singleContribution;
+        if (value > goal - totalFunds){
+            singleContribution = goal - totalFunds;
+        } else {
+            singleContribution = value;
+        }
 
         IERC20Permit token = IERC20Permit(dai);
         token.permit(
             msg.sender,
             address(this),
-            value,
+            singleContribution,
             deadline,
             v,
             r,
             s
         );
 
-        dai._safeTransferFrom(msg.sender, address(this), value);
+        dai._safeTransferFrom(msg.sender, address(this), singleContribution);
+
+        totalFunds += singleContribution;
+        if (contributions[msg.sender] != 0){
+            members.push(msg.sender);
+        }
+        contributions[msg.sender] += singleContribution;
+
+        emit FundsContributed(msg.sender, singleContribution);
+
+        if (totalFunds >= goal){
+            complete = true;
+        }
     }
 
-    function 
+    function withdraw(uint256 _reduceAmount) public nonReentrant {
+        if(_reduceAmount <= 0 || _reduceAmount > contributions[msg.sender]) revert BadValue();
+        if(complete) revert SaleEnded();
 
-    function callExtension(address dao, uint256 amount) public payable nonReentrant virtual returns (uint256 amountOut) {
-        Crowdsale storage sale = crowdsales[dao];
+        contributions[msg.sender] -= _reduceAmount;
+        totalFunds -= _reduceAmount;
 
-        if (block.timestamp > sale.saleEnds) revert SaleEnded();
+        dai._safeTransferFrom(address(this), msg.sender, _reduceAmount);
 
-        if (sale.listId != 0) 
-            if (!accessManager.listedAccounts(sale.listId, msg.sender)) revert NotListed();
-
-        if (sale.purchaseToken == address(0)) {
-            amountOut = msg.value * sale.purchaseMultiplier;
-
-            if (sale.amountPurchased + amountOut > sale.purchaseLimit) revert PurchaseLimit();
-
-            // send ETH to DAO
-            dao._safeTransferETH(msg.value);
-
-            sale.amountPurchased += uint96(amountOut);
-
-            IKaliShareManager(dao).mintShares(msg.sender, amountOut);
-        } else if (sale.purchaseToken == address(0xDead)) {
-            amountOut = msg.value * sale.purchaseMultiplier;
-
-            if (sale.amountPurchased + amountOut > sale.purchaseLimit) revert PurchaseLimit();
-
-            // send ETH to wETH
-            wETH._safeTransferETH(msg.value);
-
-            // send wETH to DAO
-            wETH._safeTransfer(dao, msg.value);
-
-            sale.amountPurchased += uint96(amountOut);
-
-            IKaliShareManager(dao).mintShares(msg.sender, amountOut);
-        } else {
-            // send tokens to DAO
-            sale.purchaseToken._safeTransferFrom(msg.sender, dao, amount);
-
-            amountOut = amount * sale.purchaseMultiplier;
-
-            if (sale.amountPurchased + amountOut > sale.purchaseLimit) revert PurchaseLimit();
-
-            sale.amountPurchased += uint96(amountOut);
-            
-            IKaliShareManager(dao).mintShares(msg.sender, amountOut);
+        if (contributions[msg.sender] <= 0){
+            for (uint i = 0; i < members.length; i++){
+                if (msg.sender == members[i]){
+                    members[i] = members[members.length - 1];
+                    members.pop();
+                    break;
+                }
+            }
         }
 
+        emit FundsWithdrawn(msg.sender, _reduceAmount);
+    }
+
+    function callExtension() public nonReentrant virtual returns (uint256 amountOut) {
+
+        if(!complete) revert NotComplete();
+        if(distributed) revert Distributed();
+
+        dai._safeTransferFrom(address(this), dao, totalFunds);
+
+        uint shares;
+        for (uint x = 0; x < members.length; x++){
+            shares = (95000 * contributions[members[x]]) / goal;
+            IKaliShareManager(dao).mintShares(members[x], shares);
+        }
+        
+
+        distributed = true;
         emit ExtensionCalled(dao, msg.sender, amountOut);
     }
 }
