@@ -83,6 +83,8 @@ contract LandDAO is Multicall, ReentrancyGuard {
 
     error InvalidSignature();
 
+    error NoLoot();
+
     /*///////////////////////////////////////////////////////////////
                             DAO STORAGE
     //////////////////////////////////////////////////////////////*/
@@ -95,7 +97,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
     
     uint256 public proposalCount;
 
-    uint32 public votingPeriod;
+    // uint32 public votingPeriod;
 
     // uint32 public gracePeriod;
 
@@ -215,7 +217,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
         bytes[] memory extensionsData_,
         // address[] calldata voters_,
         // uint256[] calldata shares_,
-        uint32[3] memory govSettings_,
+        uint32[2] memory govSettings_,
         uint32[13] memory voteSettings_,
         uint16[13] memory votePeriods_
     ) public payable nonReentrant virtual {
@@ -223,15 +225,17 @@ contract LandDAO is Multicall, ReentrancyGuard {
 
         // if (voters_.length != shares_.length) revert NoArrayParity();
 
-        if (votingPeriod != 0) revert Initialized();
+        if (supermajority != 0) revert Initialized();
 
-        if (govSettings_[0] == 0 || govSettings_[0] > 365 days) revert PeriodBounds();
+        for (uint i = 0; i < votePeriods_.length; i++){
+            if (votePeriods_[i] == 0 || votePeriods_[i] > 30 days) revert PeriodBounds();
+        }
 
         // if (govSettings_[1] > 365 days) revert PeriodBounds();
 
-        if (govSettings_[1] > 100) revert QuorumMax();
+        if (govSettings_[0] > 100) revert QuorumMax();
 
-        if (govSettings_[2] <= 51 || govSettings_[2] > 100) revert SupermajorityBounds();
+        if (govSettings_[1] <= 51 || govSettings_[1] > 100) revert SupermajorityBounds();
 
         name = name_;
         symbol = symbol_;
@@ -263,13 +267,13 @@ contract LandDAO is Multicall, ReentrancyGuard {
             }
         }
         
-        votingPeriod = govSettings_[0];
+        // votingPeriod = govSettings_[0];
 
         // gracePeriod = govSettings_[1];
         
-        quorum = govSettings_[1];
+        quorum = govSettings_[0];
         
-        supermajority = govSettings_[2];
+        supermajority = govSettings_[1];
 
         // set initial vote types
         // proposalVoteTypes[ProposalType.MINT] = VoteType(voteSettings_[4]);
@@ -342,7 +346,9 @@ contract LandDAO is Multicall, ReentrancyGuard {
     ) public payable nonReentrant virtual returns (uint256 proposal) {
         if (accounts.length != amounts.length || amounts.length != payloads.length) revert NoArrayParity();
         
-        if (proposalType == ProposalType.VPERIOD) if (amounts[0] == 0 || amounts[0] > 365 days) revert PeriodBounds();
+        if (proposalType == ProposalType.VPERIOD) if (amounts[1] == 0 || amounts[1] > 30 days) revert PeriodBounds();
+
+        if (proposalType == ProposalType.VPERIOD) if (amounts[0] > 12) revert PeriodBounds();
 
         //if (proposalType == ProposalType.GPERIOD) if (amounts[0] > 365 days) revert PeriodBounds();
         
@@ -463,7 +469,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
         // this is safe from overflow because `votingPeriod` is capped so it will not combine
         // with unix time to exceed the max uint256 value
         unchecked {
-            if (block.timestamp > prop.creationTime + votingPeriod) revert NotVoteable();
+            if (block.timestamp > prop.creationTime + proposalVotePeriod[prop.proposalType]) revert NotVoteable();
         }
 
         // we are not doing delegation
