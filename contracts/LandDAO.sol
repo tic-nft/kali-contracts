@@ -42,6 +42,10 @@ contract LandDAO is Multicall, ReentrancyGuard {
 
     event ProposalProcessed(uint256 indexed proposal, bool indexed didProposalPass);
 
+    event ProcessEmitter(ProposalType proptype, uint setting1, uint setting2, bool didPass);
+
+    event VoteEmitter(VoteType votetype, uint yes, uint no);
+
     /*///////////////////////////////////////////////////////////////
                             ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -228,7 +232,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
         if (supermajority != 0) revert Initialized();
 
         for (uint i = 0; i < votePeriods_.length; i++){
-            if (votePeriods_[i] == 0 || votePeriods_[i] > 30 days) revert PeriodBounds();
+            if (votePeriods_[i] < 12 hours || votePeriods_[i] > 30 days) revert PeriodBounds();
         }
 
         // if (govSettings_[1] > 365 days) revert PeriodBounds();
@@ -346,9 +350,9 @@ contract LandDAO is Multicall, ReentrancyGuard {
     ) public payable nonReentrant virtual returns (uint256 proposal) {
         if (accounts.length != amounts.length || amounts.length != payloads.length) revert NoArrayParity();
         
-        if (proposalType == ProposalType.VPERIOD) if (amounts[1] == 0 || amounts[1] > 30 days) revert PeriodBounds();
+        if (proposalType == ProposalType.VPERIOD) if (amounts[1] < 12 hours || amounts[1] > 30 days) revert PeriodBounds();
 
-        if (proposalType == ProposalType.VPERIOD) if (amounts[0] > 12) revert PeriodBounds();
+        if (proposalType == ProposalType.VPERIOD) if (amounts[0] > 12 || amounts.length != 2) revert PeriodBounds();
 
         //if (proposalType == ProposalType.GPERIOD) if (amounts[0] > 365 days) revert PeriodBounds();
         
@@ -356,7 +360,8 @@ contract LandDAO is Multicall, ReentrancyGuard {
         
         if (proposalType == ProposalType.SUPERMAJORITY) if (amounts[0] <= 51 || amounts[0] > 100) revert SupermajorityBounds();
 
-        if (proposalType == ProposalType.TYPE) if (amounts[0] > 11 || amounts[1] > 3 || amounts.length != 2) revert TypeBounds();
+        if (proposalType == ProposalType.TYPE) if (amounts[0] > 12 || amounts[1] > 3 || amounts.length != 2) revert TypeBounds();
+        
 
         bool selfSponsor;
 
@@ -498,9 +503,11 @@ contract LandDAO is Multicall, ReentrancyGuard {
     ) {
         Proposal storage prop = proposals[proposal];
 
+
         VoteType voteType = proposalVoteTypes[prop.proposalType];
 
         if (prop.creationTime == 0) revert NotCurrentProposal();
+
         
         // this is safe from overflow because `votingPeriod` and `gracePeriod` are capped so they will not combine
         // with unix time to exceed the max uint256 value
@@ -513,7 +520,9 @@ contract LandDAO is Multicall, ReentrancyGuard {
             if (proposals[prop.prevProposal].creationTime != 0) revert PrevNotProcessed();
 
         didProposalPass = _countVotes(voteType, prop.yesVotes, prop.noVotes);
-        
+
+        emit ProcessEmitter(prop.proposalType, prop.amounts[0], prop.amounts[1], didProposalPass);
+        emit VoteEmitter(voteType, prop.yesVotes, prop.noVotes);
         if (didProposalPass) {
             // cannot realistically overflow on human timescales
             unchecked {
@@ -649,6 +658,10 @@ contract LandDAO is Multicall, ReentrancyGuard {
 
     function _mint(address to, uint256 amount) internal virtual {
         totalSupply += amount;
+
+        if (balanceOf[to] == 0){
+            members.push(to);
+        }
 
         // cannot overflow because the sum of all user
         // balances can't exceed the max uint256 value

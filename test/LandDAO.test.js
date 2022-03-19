@@ -5,6 +5,8 @@ const { ethers } = require("hardhat")
 
 const wethAddress = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
 
+
+
 chai.should()
 
 // Defaults to e18 using amount * 10^18
@@ -15,6 +17,26 @@ function getBigNumber(amount, decimals = 18) {
 async function advanceTime(time) {
   await ethers.provider.send("evm_increaseTime", [time])
 }
+
+const ProposalType = {
+  'CALL': 0, // call contracts
+  'VPERIOD': 1, // set `votingPeriod`
+  'QUORUM': 2, // set `quorum`
+  'SUPERMAJORITY': 3, // set `supermajority`
+  'TYPE': 4, // set `VoteType` to `ProposalType`
+  'PAUSE': 5, // flip membership transferability
+  'EXTENSION': 6, // flip `extensions` whitelisting
+  'ESCAPE': 7, // delete pending proposal in case of revert
+  'DOCS': 8, // amend org docs
+  'CAPITALCALL': 9, // specific proposal to raise capital for expense
+  'SELL': 10, // call for manager to sell property
+  'PURCHASE': 11, // call to place funds in escrow for manager to use
+  'MANAGER': 12 // call to set a new manager for property
+}
+
+const numProposals = Object.keys(ProposalType).length
+const minVoteTime = 12 * 60 * 60
+const maxVoteTime = 30 * 24 * 60 * 60
 
 describe("LandDAO", function () {
   let Land // LandDAO contract
@@ -47,8 +69,8 @@ describe("LandDAO", function () {
       [], // addresses of extensions
       [], // data for extensions
       [0, 60], // quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 0], // vote type
-      [1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 1, 1] // vote days
+      Array(numProposals).fill(1),
+      Array(numProposals).fill(minVoteTime)
     )
     expect(await land.name()).to.equal("KALI")
     expect(await land.symbol()).to.equal("KALI")
@@ -56,45 +78,13 @@ describe("LandDAO", function () {
     expect(await land.balanceOf(proposer.address)).to.equal(getBigNumber(5000, 0))
     expect(await land.quorum()).to.equal(0)
     expect(await land.supermajority()).to.equal(60)
-    expect(await land.proposalVoteTypes(0)).to.equal(0)
-    expect(await land.proposalVoteTypes(1)).to.equal(0)
-    expect(await land.proposalVoteTypes(2)).to.equal(0)
-    expect(await land.proposalVoteTypes(3)).to.equal(0)
-    expect(await land.proposalVoteTypes(4)).to.equal(0)
-    expect(await land.proposalVoteTypes(5)).to.equal(0)
-    expect(await land.proposalVoteTypes(6)).to.equal(0)
-    expect(await land.proposalVoteTypes(7)).to.equal(1)
-    expect(await land.proposalVoteTypes(8)).to.equal(2)
-    expect(await land.proposalVoteTypes(9)).to.equal(3)
-    expect(await land.proposalVoteTypes(10)).to.equal(0)
-    expect(await land.proposalVoteTypes(11)).to.equal(1)
-    expect(await land.proposalVoteTypes(12)).to.equal(0)
-    expect(await land.proposalVotePeriod(0)).to.equal(1)
-    expect(await land.proposalVotePeriod(1)).to.equal(1)
-    expect(await land.proposalVotePeriod(2)).to.equal(1)
-    expect(await land.proposalVotePeriod(3)).to.equal(1)
-    expect(await land.proposalVotePeriod(4)).to.equal(1)
-    expect(await land.proposalVotePeriod(5)).to.equal(1)
-    expect(await land.proposalVotePeriod(6)).to.equal(1)
-    expect(await land.proposalVotePeriod(7)).to.equal(1)
-    expect(await land.proposalVotePeriod(8)).to.equal(2)
-    expect(await land.proposalVotePeriod(9)).to.equal(3)
-    expect(await land.proposalVotePeriod(10)).to.equal(1)
-    expect(await land.proposalVotePeriod(11)).to.equal(1)
-    expect(await land.proposalVotePeriod(12)).to.equal(1)
+    for (i = 0; i < numProposals; i++){
+      expect(await land.proposalVoteTypes(i)).to.equal(1)
+      expect(await land.proposalVotePeriod(i)).to.equal(minVoteTime)
+    }
   })
-  it("Should revert if initialization vote type settings exceed or underflow bounds", async function () {
-    expect(await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      dai.address,
-      [], // addresses of extensions
-      [], // data for extensions
-      [0, 60], // quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1], // vote type
-      [1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 1, 1] // vote days
-    ).should.be.reverted)
+  it("Should revert if initialization governance exceed or underflow bounds", async function () {
+    // too many items in array
     expect(await land.init(
       "KALI",
       "KALI",
@@ -103,9 +93,24 @@ describe("LandDAO", function () {
       [], // addresses of extensions
       [], // data for extensions
       [30, 0, 60], // quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 0, 1], // vote type
-      [1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 1, 1] // vote days
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     ).should.be.reverted)
+    // not enough items in array
+    expect(await land.init(
+      "KALI",
+      "KALI",
+      "DOCS",
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
+    ).should.be.reverted)
+  })
+  it("Should revert if initialization vote type settings exceed or underflow bounds", async function () {
+    // too few vote types
     expect(await land.init(
       "KALI",
       "KALI",
@@ -114,11 +119,36 @@ describe("LandDAO", function () {
       [], // addresses of extensions
       [], // data for extensions
       [0, 60], // quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 9], // vote type
-      [1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 1, 1] // vote days
+      Array(numProposals-1).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
+    ).should.be.reverted)
+    // too many vote types
+    expect(await land.init(
+      "KALI",
+      "KALI",
+      "DOCS",
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      [...Array(numProposals).fill(1), 1], // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
+    ).should.be.reverted)
+    // vote type out of bounds
+    expect(await land.init(
+      "KALI",
+      "KALI",
+      "DOCS",
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      [...Array(numProposals-1).fill(1), 9], // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     ).should.be.reverted)
   })
   it("Should revert if initialization vote length settings exceed or underflow bounds", async function () {
+    // too few vote times
     expect(await land.init(
       "KALI",
       "KALI",
@@ -127,9 +157,10 @@ describe("LandDAO", function () {
       [], // addresses of extensions
       [], // data for extensions
       [0, 60], // quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 1], // vote type
-      [1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 1] // vote days
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals-1).fill(minVoteTime) // vote time
     ).should.be.reverted)
+    // too many vote times
     expect(await land.init(
       "KALI",
       "KALI",
@@ -138,30 +169,8 @@ describe("LandDAO", function () {
       [], // addresses of extensions
       [], // data for extensions
       [0, 60], // quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 0],
-      [1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 1, 1, 1]
-    ).should.be.reverted)
-    expect(await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      dai.address,
-      [], // addresses of extensions
-      [], // data for extensions
-      [0, 60], // quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 1],
-      [1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 0, 1]
-    ).should.be.reverted)
-    expect(await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      dai.address,
-      [], // addresses of extensions
-      [], // data for extensions
-      [0, 60], // quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 1],
-      [1, 35, 1, 1, 1, 1, 1, 1, 2, 3, 1, 0, 1]
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals+1).fill(minVoteTime) // vote time
     ).should.be.reverted)
   })
   it("Should revert if initialization arrays don't match", async function () {
@@ -173,8 +182,8 @@ describe("LandDAO", function () {
       [bob.address], // addresses of extensions
       [], // data for extensions
       [0, 60], // ]quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 0], // vote type
-      [1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 1, 1] // vote days
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     ).should.be.reverted)
   })
   it("Should revert if already initialized", async function () {
@@ -186,8 +195,8 @@ describe("LandDAO", function () {
       [], // addresses of extensions
       [], // data for extensions
       [0, 60], // ]quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 0], // vote type
-      [1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 1, 1] // vote days
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     ))
     expect(await land.init(
       "KALI",
@@ -197,11 +206,12 @@ describe("LandDAO", function () {
       [], // addresses of extensions
       [], // data for extensions
       [0, 60], // ]quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 0], // vote type
-      [1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 1, 1] // vote days
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     ).should.be.reverted)
   })
   it("Should revert if voting period is initialized null or longer than 30 days", async function () {
+    // vote time too low
     expect(await land.init(
       "KALI",
       "KALI",
@@ -209,10 +219,11 @@ describe("LandDAO", function () {
       dai.address,
       [], // addresses of extensions
       [], // data for extensions
-      [0, 60], // ]quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 0], // vote type
-      [1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 0, 1] // vote days
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      [...Array(numProposals-1).fill(minVoteTime), minVoteTime-1] // vote time
     ).should.be.reverted)
+    // vote time exceed bounds
     expect(await land.init(
       "KALI",
       "KALI",
@@ -220,9 +231,9 @@ describe("LandDAO", function () {
       dai.address,
       [], // addresses of extensions
       [], // data for extensions
-      [0, 60], // ]quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 0], // vote type
-      [1, 1, 2592001, 1, 1, 1, 1, 1, 2, 3, 1, 1, 1] // vote days
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      [...Array(numProposals-1).fill(minVoteTime), maxVoteTime+1] // vote time
     ).should.be.reverted)
   })
   it("Should revert if quorum is initialized greater than 100", async function () {
@@ -234,8 +245,8 @@ describe("LandDAO", function () {
       [], // addresses of extensions
       [], // data for extensions
       [101, 60], // ]quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 0], // vote type
-      [1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 1, 1] // vote days
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     ).should.be.reverted)
   })
   it("Should revert if supermajority is initialized less than 52 or greater than 100", async function () {
@@ -247,8 +258,8 @@ describe("LandDAO", function () {
       [], // addresses of extensions
       [], // data for extensions
       [0, 51], // ]quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 0], // vote type
-      [1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 1, 1] // vote days
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     ).should.be.reverted)
     expect(await land.init(
       "KALI",
@@ -258,8 +269,8 @@ describe("LandDAO", function () {
       [], // addresses of extensions
       [], // data for extensions
       [0, 101], // ]quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 0], // vote type
-      [1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 1, 1] // vote days
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     ).should.be.reverted)
   })
   it("Should revert if proposal arrays don't match", async function () {
@@ -271,8 +282,8 @@ describe("LandDAO", function () {
       [], // addresses of extensions
       [], // data for extensions
       [0, 60], // ]quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 0], // vote type
-      [1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 1, 1] // vote days
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
     expect(await land.propose(
       0,
@@ -291,37 +302,46 @@ describe("LandDAO", function () {
       [], // addresses of extensions
       [], // data for extensions
       [0, 60], // ]quorum, supermajority
-      [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 1, 0], // vote type
-      [1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 1, 1] // vote days
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
     // normal
     await land.propose(
-      1,
+      ProposalType['VPERIOD'],
       "TEST",
       [bob.address, bob.address],
-      [3, 9000],
+      [3, minVoteTime],
       [0x00, 0x00]
     )
     expect(await land.propose(
-      1,
+      ProposalType['VPERIOD'],
       "TEST",
       [bob.address, bob.address],
-      [3, 0],
+      [3, minVoteTime - 1],
       [0x00, 0x00]
     ).should.be.reverted)
     expect(await land.propose(
-      1,
+      ProposalType['VPERIOD'],
       "TEST",
       [bob.address, bob.address],
-      [3, 2592001],
+      [3, maxVoteTime + 1],
       [0x00, 0x00]
     ).should.be.reverted)
+    // setting for proposal out of bounds
     expect(await land.propose(
-      1,
+      ProposalType['VPERIOD'],
       "TEST",
       [bob.address, bob.address],
-      [13, 9000],
+      [numProposals, minVoteTime],
       [0x00, 0x00]
+    ).should.be.reverted)
+    // extra value in array
+    expect(await land.propose(
+      ProposalType['VPERIOD'],
+      "TEST",
+      [proposer.address, bob.address, alice.address],
+      [3, minVoteTime, 10],
+      [0x00, 0x00, 0x00]
     ).should.be.reverted)
   })
   it("Should revert if quorum proposal is for greater than 100", async function () {
@@ -329,23 +349,23 @@ describe("LandDAO", function () {
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [],
-      [],
-      [bob.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // ]quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
     // normal
     await land.propose(
-      5,
+      ProposalType['QUORUM'],
       "TEST",
       [bob.address],
       [20],
       [0x00]
     )
     expect(await land.propose(
-      5,
+      ProposalType['QUORUM'],
       "TEST",
       [bob.address],
       [101],
@@ -357,72 +377,72 @@ describe("LandDAO", function () {
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [],
-      [],
-      [bob.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // ]quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
     // normal
     await land.propose(
-      6,
+      ProposalType['SUPERMAJORITY'],
       "TEST",
       [bob.address],
       [60],
       [0x00]
     )
     expect(await land.propose(
-      6,
+      ProposalType['SUPERMAJORITY'],
       "TEST",
       [bob.address],
       [51],
       [0x00]
     ).should.be.reverted)
     expect(await land.propose(
-      6,
+      ProposalType['SUPERMAJORITY'],
       "TEST",
       [bob.address],
       [101],
       [0x00]
     ).should.be.reverted)
   })
-  it("Should revert if type proposal has proposal type greater than 10, vote type greater than 3, or setting length isn't 2", async function () {
+  it("Should revert if type proposal has proposal type greater than 12, vote type greater than 3, or setting length isn't 2", async function () {
     await land.init(
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [],
-      [],
-      [bob.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // ]quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
     // normal
     await land.propose(
-      7,
+      ProposalType['TYPE'],
       "TEST",
       [bob.address, alice.address],
       [0, 1],
       [0x00, 0x00]
     )
     expect(await land.propose(
-      7,
+      ProposalType['TYPE'],
       "TEST",
       [bob.address, alice.address],
-      [12, 2],
+      [numProposals, 2],
       [0x00, 0x00]
     ).should.be.reverted)
     expect(await land.propose(
-      7,
+      ProposalType['TYPE'],
       "TEST",
       [bob.address, alice.address],
       [0, 5],
       [0x00, 0x00]
     ).should.be.reverted)
     expect(await land.propose(
-      7,
+      ProposalType['TYPE'],
       "TEST",
       [proposer.address, bob.address, alice.address],
       [0, 1, 0],
@@ -434,40 +454,42 @@ describe("LandDAO", function () {
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // ]quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
     await land.connect(alice).propose(
-      0,
+      ProposalType['TYPE'],
       "TEST",
-      [alice.address],
-      [getBigNumber(1000)],
-      [0x00]
+      [bob.address, alice.address],
+      [0, 1],
+      [0x00, 0x00]
     )
     await land.connect(alice).cancelProposal(1)
+
+    //TODO: How do we know this proposal was actually cancelled?
   })
   it("Should forbid non-proposer from cancelling unsponsored proposal", async function () {
     await land.init(
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // ]quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
     await land.connect(alice).propose(
-      0,
+      ProposalType['TYPE'],
       "TEST",
-      [alice.address],
-      [getBigNumber(1000)],
-      [0x00]
+      [bob.address, alice.address],
+      [0, 1],
+      [0x00, 0x00]
     )
     expect(await land.cancelProposal(0).should.be.reverted)
   })
@@ -476,19 +498,19 @@ describe("LandDAO", function () {
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // ]quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
     await land.connect(alice).propose(
-      0,
+      ProposalType['TYPE'],
       "TEST",
-      [alice.address],
-      [getBigNumber(1000)],
-      [0x00]
+      [bob.address, alice.address],
+      [0, 1],
+      [0x00, 0x00]
     )
     await land.sponsorProposal(1)
     expect(await land.connect(alice).cancelProposal(1).should.be.reverted)
@@ -498,19 +520,19 @@ describe("LandDAO", function () {
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // ]quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
     await land.connect(alice).propose(
-      0,
+      ProposalType['TYPE'],
       "TEST",
-      [alice.address],
-      [getBigNumber(1000)],
-      [0x00]
+      [bob.address, alice.address],
+      [0, 1],
+      [0x00, 0x00]
     )
     expect(await land.connect(alice).cancelProposal(10).should.be.reverted)
   })
@@ -519,25 +541,30 @@ describe("LandDAO", function () {
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
+    expect(await land.proposalVoteTypes(0)).to.equal(1)
     await land.connect(alice).propose(
-      0,
+      ProposalType['TYPE'],
       "TEST",
-      [alice.address],
-      [getBigNumber(1000)],
-      [0x00]
+      [bob.address, alice.address],
+      [0, 2],
+      [0x00, 0x00]
     )
+    expect(await land.weights(1, proposer.address)).to.equal(5000)
     await land.sponsorProposal(1)
     await land.vote(1, true)
-    await advanceTime(35)
+    await advanceTime(minVoteTime + 1)
+    expect(await land.voted(1, proposer.address)).to.be.true
     await land.processProposal(1)
-    expect(await land.balanceOf(alice.address)).to.equal(getBigNumber(1000))
+    //await expect(land.processProposal(1)).to.emit(land, "VoteEmitter").withArgs(1, 5000, 0)
+    // await expect(land.processProposal(1)).to.emit(land, "ProcessEmitter").withArgs(ProposalType['TYPE'], 0, 2, true)
+    expect(await land.proposalVoteTypes(0)).to.equal(2)
   })
   it("Should forbid non-member from sponsoring proposal", async function () {
     await land.init(
