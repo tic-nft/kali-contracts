@@ -160,7 +160,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
         QUORUM, // set `quorum`
         SUPERMAJORITY, // set `supermajority`
         TYPE, // set `VoteType` to `ProposalType`
-        PAUSE, // flip membership transferability
+        // PAUSE, // flip membership transferability
         EXTENSION, // flip `extensions` whitelisting
         ESCAPE, // delete pending proposal in case of revert
         DOCS, // amend org docs
@@ -169,6 +169,8 @@ contract LandDAO is Multicall, ReentrancyGuard {
         PURCHASE, // call to place funds in escrow for manager to use
         MANAGER // call to set a new manager for property
     }
+
+    uint16 internal constant TYPE_COUNT = 12;
 
     enum VoteType {
         SIMPLE_MAJORITY,
@@ -222,8 +224,8 @@ contract LandDAO is Multicall, ReentrancyGuard {
         // address[] calldata voters_,
         // uint256[] calldata shares_,
         uint32[2] memory govSettings_,
-        uint32[13] memory voteSettings_,
-        uint16[13] memory votePeriods_
+        uint32[TYPE_COUNT] memory voteSettings_,
+        uint16[TYPE_COUNT] memory votePeriods_
     ) public payable nonReentrant virtual {
         if (extensions_.length != extensionsData_.length) revert NoArrayParity();
 
@@ -279,52 +281,10 @@ contract LandDAO is Multicall, ReentrancyGuard {
         
         supermajority = govSettings_[1];
 
-        // set initial vote types
-        // proposalVoteTypes[ProposalType.MINT] = VoteType(voteSettings_[4]);
-
-        // proposalVoteTypes[ProposalType.BURN] = VoteType(voteSettings_[5]);
-
-        proposalVoteTypes[ProposalType.CALL] = VoteType(voteSettings_[0]);
-
-        proposalVoteTypes[ProposalType.VPERIOD] = VoteType(voteSettings_[1]);
-
-        // proposalVoteTypes[ProposalType.GPERIOD] = VoteType(voteSettings_[8]);
-        
-        proposalVoteTypes[ProposalType.QUORUM] = VoteType(voteSettings_[2]);
-        
-        proposalVoteTypes[ProposalType.SUPERMAJORITY] = VoteType(voteSettings_[3]);
-
-        proposalVoteTypes[ProposalType.TYPE] = VoteType(voteSettings_[4]);
-        
-        proposalVoteTypes[ProposalType.PAUSE] = VoteType(voteSettings_[5]);
-        
-        proposalVoteTypes[ProposalType.EXTENSION] = VoteType(voteSettings_[6]);
-
-        proposalVoteTypes[ProposalType.ESCAPE] = VoteType(voteSettings_[7]);
-
-        proposalVoteTypes[ProposalType.DOCS] = VoteType(voteSettings_[8]);
-
-        proposalVoteTypes[ProposalType.CAPITALCALL] = VoteType(voteSettings_[9]);
-
-        proposalVoteTypes[ProposalType.SELL] = VoteType(voteSettings_[10]);
-
-        proposalVoteTypes[ProposalType.PURCHASE] = VoteType(voteSettings_[11]);
-
-        proposalVoteTypes[ProposalType.MANAGER] = VoteType(voteSettings_[12]);
-        
-        proposalVotePeriod[ProposalType.CALL] = votePeriods_[0];
-        proposalVotePeriod[ProposalType.VPERIOD] = votePeriods_[1];
-        proposalVotePeriod[ProposalType.QUORUM] = votePeriods_[2];
-        proposalVotePeriod[ProposalType.SUPERMAJORITY] = votePeriods_[3];
-        proposalVotePeriod[ProposalType.TYPE] = votePeriods_[4];
-        proposalVotePeriod[ProposalType.PAUSE] = votePeriods_[5];
-        proposalVotePeriod[ProposalType.EXTENSION] = votePeriods_[6];
-        proposalVotePeriod[ProposalType.ESCAPE] = votePeriods_[7];
-        proposalVotePeriod[ProposalType.DOCS] = votePeriods_[8];
-        proposalVotePeriod[ProposalType.CAPITALCALL] = votePeriods_[9];
-        proposalVotePeriod[ProposalType.SELL] = votePeriods_[10];
-        proposalVotePeriod[ProposalType.PURCHASE] = votePeriods_[11];
-        proposalVotePeriod[ProposalType.MANAGER] = votePeriods_[12];
+        for (uint t = 0; t < voteSettings_.length; t++){
+            proposalVoteTypes[ProposalType(t)] = VoteType(voteSettings_[t]);
+            proposalVotePeriod[ProposalType(t)] = votePeriods_[t];
+        }
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -352,7 +312,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
         
         if (proposalType == ProposalType.VPERIOD) if (amounts[1] < 12 hours || amounts[1] > 30 days) revert PeriodBounds();
 
-        if (proposalType == ProposalType.VPERIOD) if (amounts[0] > 12 || amounts.length != 2) revert PeriodBounds();
+        if (proposalType == ProposalType.VPERIOD) if (amounts[0] > TYPE_COUNT-1 || amounts.length != 2) revert PeriodBounds();
 
         //if (proposalType == ProposalType.GPERIOD) if (amounts[0] > 365 days) revert PeriodBounds();
         
@@ -360,7 +320,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
         
         if (proposalType == ProposalType.SUPERMAJORITY) if (amounts[0] <= 51 || amounts[0] > 100) revert SupermajorityBounds();
 
-        if (proposalType == ProposalType.TYPE) if (amounts[0] > 12 || amounts[1] > 3 || amounts.length != 2) revert TypeBounds();
+        if (proposalType == ProposalType.TYPE) if (amounts[0] > TYPE_COUNT-1 || amounts[1] > 3 || amounts.length != 2) revert TypeBounds();
         
 
         bool selfSponsor;
@@ -521,7 +481,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
 
         didProposalPass = _countVotes(voteType, prop.yesVotes, prop.noVotes);
 
-        emit ProcessEmitter(prop.proposalType, prop.amounts[0], prop.amounts[1], didProposalPass);
+        //emit ProcessEmitter(prop.proposalType, prop.amounts[0], prop.amounts[1], didProposalPass);
         emit VoteEmitter(voteType, prop.yesVotes, prop.noVotes);
         if (didProposalPass) {
             // cannot realistically overflow on human timescales
