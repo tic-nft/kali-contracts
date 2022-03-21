@@ -992,16 +992,16 @@ describe("LandDAO", function () {
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
-    await land.propose(9, "TEST", [wethAddress], [1], [0x00])
+    await land.propose(ProposalType["EXTENSION"], "TEST", [wethAddress], [1], [0x00])
     await land.vote(1, true)
-    await advanceTime(35)
+    await advanceTime(minVoteTime + 1)
     await land.processProposal(1)
     expect(await land.extensions(wethAddress)).to.equal(true)
   })
