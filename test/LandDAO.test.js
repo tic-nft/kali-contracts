@@ -2,6 +2,7 @@ const { BigNumber } = require("ethers")
 const chai = require("chai")
 const { expect } = require("chai")
 const { ethers } = require("hardhat")
+const { signDaiPermit } = require("eth-permit");
 
 const wethAddress = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
 
@@ -1005,66 +1006,66 @@ describe("LandDAO", function () {
     await land.processProposal(1)
     expect(await land.extensions(wethAddress)).to.equal(true)
   })
-  it("Should process extension proposal - LandDAOcrowdsale with ETH", async function () {
-    // Instantiate LandDAO
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    // Instantiate LandWhiteListManager
-    let LandWhitelistManager = await ethers.getContractFactory(
-      "LandAccessManager"
-    )
-    let landWhitelistManager = await LandWhitelistManager.deploy()
-    await landWhitelistManager.deployed()
-    // Instantiate extension contract
-    let LandDAOcrowdsale = await ethers.getContractFactory("LandDAOcrowdsale")
-    let landDAOcrowdsale = await LandDAOcrowdsale.deploy(
-      landWhitelistManager.address,
-      wethAddress
-    )
-    await landDAOcrowdsale.deployed()
-    // Set up whitelist
-    await landWhitelistManager.createList(
-      [alice.address],
-      "0x074b43252ffb4a469154df5fb7fe4ecce30953ba8b7095fe1e006185f017ad10"
-    )
-    // Set up payload for extension proposal
-    let payload = ethers.utils.defaultAbiCoder.encode(
-      ["uint256", "address", "uint8", "uint96", "uint32", "string"],
-      [
-        1,
-        "0x0000000000000000000000000000000000000000",
-        2,
-        getBigNumber(100),
-        1672174799,
-        "DOCS"
-      ]
-    )
-    await land.propose(9, "TEST", [landDAOcrowdsale.address], [1], [payload])
-    await land.vote(1, true)
-    await advanceTime(35)
-    await land.processProposal(1)
-    await landDAOcrowdsale 
-      .connect(alice)
-      .callExtension(land.address, getBigNumber(50), {
-        value: getBigNumber(50),
-      })
-    expect(await ethers.provider.getBalance(land.address)).to.equal(
-      getBigNumber(50)
-    )
-    expect(await land.balanceOf(alice.address)).to.equal(getBigNumber(100))
-  })
+  // it("Should process extension proposal - LandDAOcrowdsale with ETH", async function () {
+  //   // Instantiate LandDAO
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     true,
+  //     [],
+  //     [],
+  //     [proposer.address],
+  //     [getBigNumber(1)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   // Instantiate LandWhiteListManager
+  //   let LandWhitelistManager = await ethers.getContractFactory(
+  //     "LandAccessManager"
+  //   )
+  //   let landWhitelistManager = await LandWhitelistManager.deploy()
+  //   await landWhitelistManager.deployed()
+  //   // Instantiate extension contract
+  //   let LandDAOcrowdsale = await ethers.getContractFactory("LandDAOcrowdsale")
+  //   let landDAOcrowdsale = await LandDAOcrowdsale.deploy(
+  //     landWhitelistManager.address,
+  //     wethAddress
+  //   )
+  //   await landDAOcrowdsale.deployed()
+  //   // Set up whitelist
+  //   await landWhitelistManager.createList(
+  //     [alice.address],
+  //     "0x074b43252ffb4a469154df5fb7fe4ecce30953ba8b7095fe1e006185f017ad10"
+  //   )
+  //   // Set up payload for extension proposal
+  //   let payload = ethers.utils.defaultAbiCoder.encode(
+  //     ["uint256", "address", "uint8", "uint96", "uint32", "string"],
+  //     [
+  //       1,
+  //       "0x0000000000000000000000000000000000000000",
+  //       2,
+  //       getBigNumber(100),
+  //       1672174799,
+  //       "DOCS"
+  //     ]
+  //   )
+  //   await land.propose(9, "TEST", [landDAOcrowdsale.address], [1], [payload])
+  //   await land.vote(1, true)
+  //   await advanceTime(35)
+  //   await land.processProposal(1)
+  //   await landDAOcrowdsale 
+  //     .connect(alice)
+  //     .callExtension(land.address, getBigNumber(50), {
+  //       value: getBigNumber(50),
+  //     })
+  //   expect(await ethers.provider.getBalance(land.address)).to.equal(
+  //     getBigNumber(50)
+  //   )
+  //   expect(await land.balanceOf(alice.address)).to.equal(getBigNumber(100))
+  // })
   it("Should process extension proposal - LandDAOcrowdsale with ERC20", async function () {
     // Instantiate purchaseToken
-    let PurchaseToken = await ethers.getContractFactory("LandERC20")
+    let PurchaseToken = await ethers.getContractFactory("KaliERC20")
     let purchaseToken = await PurchaseToken.deploy()
     await purchaseToken.deployed()
     await purchaseToken.init(
@@ -1082,16 +1083,16 @@ describe("LandDAO", function () {
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
     // Instantiate LandWhiteListManager
     let LandWhitelistManager = await ethers.getContractFactory(
-      "LandAccessManager"
+      "KaliAccessManager"
     )
     let landWhitelistManager = await LandWhitelistManager.deploy()
     await landWhitelistManager.deployed()
@@ -1099,7 +1100,8 @@ describe("LandDAO", function () {
     let LandDAOcrowdsale = await ethers.getContractFactory("LandDAOcrowdsale")
     let landDAOcrowdsale = await LandDAOcrowdsale.deploy(
       landWhitelistManager.address,
-      wethAddress
+      wethAddress,
+      purchaseToken.address
     )
     await landDAOcrowdsale.deployed()
     // Set up whitelist
@@ -1109,16 +1111,41 @@ describe("LandDAO", function () {
     )
     // Set up payload for extension proposal
     let payload = ethers.utils.defaultAbiCoder.encode(
-      ["uint256", "address", "uint8", "uint96", "uint32", "string"],
-      [1, purchaseToken.address, 2, getBigNumber(100), 1672174799, "DOCS"]
+      ["address", "uint96", "uint256"],
+      [purchaseToken.address, getBigNumber(1000), getBigNumber(100)]
     )
-    await land.propose(9, "TEST", [landDAOcrowdsale.address], [1], [payload])
+    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [1], [payload])
     await land.vote(1, true)
-    await advanceTime(35)
+    await advanceTime(minVoteTime + 1)
     await land.processProposal(1)
+
+    const domain = {
+      name: "KALI",
+      version: "1",
+      chainId: 31337,
+      verifyingContract: land.address,
+    }
+    const types = {
+      SignVote: [
+        { name: "signer", type: "address" },
+        { name: "proposal", type: "uint256" },
+        { name: "approve", type: "bool" },
+      ],
+    }
+    const value = {
+      signer: proposer.address,
+      proposal: 1,
+      approve: true,
+    }
+
+    const signature = await proposer._signTypedData(domain, types, value)
+    const { r, s, v } = ethers.utils.splitSignature(signature)
+
+    await land.voteBySig(proposer.address, 1, true, v, r, s)
+
     await purchaseToken
       .connect(alice)
-      .approve(landDAOcrowdsale.address, getBigNumber(50))
+      .contribute(landDAOcrowdsale.address, getBigNumber(100))
     await landDAOcrowdsale
       .connect(alice)
       .callExtension(land.address, getBigNumber(50))
