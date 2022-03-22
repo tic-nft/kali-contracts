@@ -5,7 +5,7 @@ pragma solidity >=0.8.4;
 import '../../libraries/SafeTransferLib.sol';
 import '../../interfaces/IKaliAccessManager.sol';
 import '../../interfaces/IKaliShareManager.sol';
-import '../../interfaces/IERC20Permit.sol';
+import '../../interfaces/IDAIPermit.sol';
 import '../../utils/Multicall.sol';
 import '../../utils/ReentrancyGuard.sol';
 
@@ -96,6 +96,7 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
     function contribute(
         //IERC20Permit token, 
         uint256 value,
+        uint256 nonce,
         uint256 deadline,
         uint8 v,
         bytes32 r, 
@@ -111,19 +112,21 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
             singleContribution = value;
         }
 
-        IERC20Permit token = IERC20Permit(dai);
+        
+        IDAIPermit token = IDAIPermit(dai);
         token.permit(
             msg.sender,
             address(this),
-            singleContribution,
+            nonce,
             deadline,
+            true,
             v,
             r,
             s
         );
 
         dai._safeTransferFrom(msg.sender, address(this), singleContribution);
-
+        
         totalFunds += singleContribution;
         if (contributions[msg.sender] != 0){
             members.push(msg.sender);

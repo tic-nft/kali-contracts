@@ -1063,19 +1063,14 @@ describe("LandDAO", function () {
   //   )
   //   expect(await land.balanceOf(alice.address)).to.equal(getBigNumber(100))
   // })
-  it("Should process extension proposal - LandDAOcrowdsale with ERC20", async function () {
+  it("Should process extension proposal - LandDAOcrowdsale with DAI", async function () {
     // Instantiate purchaseToken
-    let PurchaseToken = await ethers.getContractFactory("KaliERC20")
+    let PurchaseToken = await ethers.getContractFactory("Dai")
     let purchaseToken = await PurchaseToken.deploy()
     await purchaseToken.deployed()
     await purchaseToken.init(
-      "KALI",
-      "KALI",
-      "DOCS",
       [alice.address],
-      [getBigNumber(1000)],
-      false,
-      alice.address
+      [getBigNumber(1000)]
     )
     await purchaseToken.deployed()
     // Instantiate LandDAO
@@ -1114,45 +1109,42 @@ describe("LandDAO", function () {
       ["address", "uint96", "uint256"],
       [purchaseToken.address, getBigNumber(1000), getBigNumber(100)]
     )
+    expect(await landDAOcrowdsale.goal()).to.equal(getBigNumber(0))
+    expect(await landDAOcrowdsale.fundingERC20()).to.equal("0x0000000000000000000000000000000000000000")
+    expect(await landDAOcrowdsale.purchaseLimit()).to.equal(getBigNumber(0))
+    expect(await landDAOcrowdsale.totalFunds()).to.equal(getBigNumber(0))
+    
     await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [1], [payload])
     await land.vote(1, true)
     await advanceTime(minVoteTime + 1)
+    console.log("process proposal should init the crowdsale")
     await land.processProposal(1)
 
-    const domain = {
-      name: "KALI",
-      version: "1",
-      chainId: 31337,
-      verifyingContract: land.address,
-    }
-    const types = {
-      SignVote: [
-        { name: "signer", type: "address" },
-        { name: "proposal", type: "uint256" },
-        { name: "approve", type: "bool" },
-      ],
-    }
-    const value = {
-      signer: proposer.address,
-      proposal: 1,
-      approve: true,
-    }
+    expect(await landDAOcrowdsale.goal()).to.equal(getBigNumber(100))
+    expect(await landDAOcrowdsale.fundingERC20()).to.equal(purchaseToken.address)
+    expect(await landDAOcrowdsale.purchaseLimit()).to.equal(getBigNumber(1000))
+    expect(await landDAOcrowdsale.totalFunds()).to.equal(getBigNumber(0))
 
-    const signature = await proposer._signTypedData(domain, types, value)
-    const { r, s, v } = ethers.utils.splitSignature(signature)
+    const result = await signDaiPermit(ethers.provider, purchaseToken.address, alice.address, land.address);
+    //console.log(result)
 
-    await land.voteBySig(proposer.address, 1, true, v, r, s)
+    // await token.methods.permit(alice.address, land.address, result.nonce, result.expiry, true, result.v, result.r, result.s).send({
+    //   from: senderAddress,
+    // });
 
-    await purchaseToken
-      .connect(alice)
-      .contribute(landDAOcrowdsale.address, getBigNumber(100))
+    console.log("before the crowdsale call")
     await landDAOcrowdsale
       .connect(alice)
-      .callExtension(land.address, getBigNumber(50))
+      .contribute(getBigNumber(100), result.nonce, result.expiry, result.v, result.r, result.s)
+    expect(await landDAOcrowdsale.totalFunds()).to.equal(getBigNumber(100))
+    expect(await landDAOcrowdsale.complete()).to.be.true
+    console.log("before calling the extension")
+    await landDAOcrowdsale
+      .callExtension()
     expect(await purchaseToken.balanceOf(land.address)).to.equal(
-      getBigNumber(50)
+      getBigNumber(100)
     )
-    expect(await land.balanceOf(alice.address)).to.equal(getBigNumber(100))
+    expect(await land.balanceOf(alice.address)).to.equal(getBigNumber(95000))
   })
   it("Should process escape proposal", async function () {
     await land.init(
