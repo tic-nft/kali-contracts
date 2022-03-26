@@ -1471,6 +1471,33 @@ describe("LandDAO", function () {
     
   })
 
+  it("Only manager can set the state", async function () {
+    // Instantiate purchaseToken
+    let PurchaseToken = await ethers.getContractFactory("Dai")
+    let purchaseToken = await PurchaseToken.deploy()
+    await purchaseToken.deployed()
+    await purchaseToken.init(
+      [alice.address, proposer.address],
+      [getBigNumber(1000), getBigNumber(1000)]
+    )
+    
+    await land.init(
+      "KALI",
+      "KALI",
+      "DOCS",
+      purchaseToken.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
+    )
+
+    await land.setState(1)
+
+    expect(await land.connect(alice).setState(2).should.be.reverted)
+  })
+
   // Test deposit dividend and withdraw
 
 

@@ -9,6 +9,7 @@ import './utils/ReentrancyGuard.sol';
 import './interfaces/IKaliDAOextension.sol';
 //import './interfaces/IERC20Permit.sol';
 import './interfaces/IDAIPermit.sol';
+import './interfaces/IFundRaise.sol';
 //import './tokens/erc20/Dai.sol';
 import './libraries/SafeTransferLib.sol';
 // import "@openzeppelin/contracts/access/Ownable.sol";
