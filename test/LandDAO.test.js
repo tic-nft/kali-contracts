@@ -15,6 +15,10 @@ function getBigNumber(amount, decimals = 18) {
   return BigNumber.from(amount).mul(BigNumber.from(10).pow(decimals))
 }
 
+async function mine(blocks){
+  await ethers.provider.send("evm_mine", [blocks])
+}
+
 async function advanceTime(time) {
   await ethers.provider.send("evm_increaseTime", [time])
 }
@@ -32,7 +36,8 @@ const ProposalType = {
   'CAPITALCALL': 8, // specific proposal to raise capital for expense
   'SELL': 9, // call for manager to sell property
   'PURCHASE': 10, // call to place funds in escrow for manager to use
-  'MANAGER': 11 // call to set a new manager for property
+  'MANAGER': 11, // call to set a new manager for property
+  'EXIT': 12 // call to divide the spoils and exit the property typically when the property could not be purchased
 }
 
 const numProposals = Object.keys(ProposalType).length
@@ -174,6 +179,7 @@ describe("LandDAO", function () {
       Array(numProposals+1).fill(minVoteTime) // vote time
     ).should.be.reverted)
   })
+/*
   it("Should revert if initialization arrays don't match", async function () {
     expect(await land.init(
       "KALI",
@@ -1062,17 +1068,18 @@ describe("LandDAO", function () {
   //     getBigNumber(50)
   //   )
   //   expect(await land.balanceOf(alice.address)).to.equal(getBigNumber(100))
-  // })
+  // }
+*/
   it("Should process extension proposal - LandDAOcrowdsale with DAI", async function () {
     // Instantiate purchaseToken
     let PurchaseToken = await ethers.getContractFactory("Dai")
     let purchaseToken = await PurchaseToken.deploy()
     await purchaseToken.deployed()
     await purchaseToken.init(
-      [alice.address],
-      [getBigNumber(1000)]
+      [alice.address, proposer.address],
+      [getBigNumber(1000), getBigNumber(1000)]
     )
-    await purchaseToken.deployed()
+    
     // Instantiate LandDAO
     await land.init(
       "KALI",
@@ -1117,67 +1124,63 @@ describe("LandDAO", function () {
     await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [1], [payload])
     await land.vote(1, true)
     await advanceTime(minVoteTime + 1)
-    console.log("process proposal should init the crowdsale")
     await land.processProposal(1)
 
     expect(await landDAOcrowdsale.goal()).to.equal(getBigNumber(100))
     expect(await landDAOcrowdsale.fundingERC20()).to.equal(purchaseToken.address)
+    expect(await landDAOcrowdsale.dai()).to.equal(purchaseToken.address)
     expect(await landDAOcrowdsale.purchaseLimit()).to.equal(getBigNumber(1000))
     expect(await landDAOcrowdsale.totalFunds()).to.equal(getBigNumber(0))
 
-    const result = await signDaiPermit(ethers.provider, purchaseToken.address, alice.address, land.address);
-    //console.log(result)
+    const result = await signDaiPermit(ethers.provider, purchaseToken.address, alice.address, landDAOcrowdsale.address);
 
-    // await token.methods.permit(alice.address, land.address, result.nonce, result.expiry, true, result.v, result.r, result.s).send({
-    //   from: senderAddress,
-    // });
+    // transResp = await purchaseToken.connect(alice).permit(alice.address, landDAOcrowdsale.address, result.nonce, result.expiry, true, result.v, result.r, result.s)
+    // transReceipt = await transResp.wait()
+    // console.log(transReceipt.events)
 
-    console.log("before the crowdsale call")
+    //  await expect(land.processProposal(1)).to.emit(land, "ProcessEmitter").withArgs(ProposalType['TYPE'], 0, 2, true)
+    
     await landDAOcrowdsale
       .connect(alice)
       .contribute(getBigNumber(100), result.nonce, result.expiry, result.v, result.r, result.s)
+    //  .to.emit(purchaseToken, 'PermitFired').withArgs(alice.address, landDAOcrowdsale.address, getBigNumber(result.nonce), getBigNumber(result.expiry), true, result.v, result.r, result.s, result.s)
+    
+    expect(await landDAOcrowdsale.members(0)).to.equal(alice.address)
     expect(await landDAOcrowdsale.totalFunds()).to.equal(getBigNumber(100))
     expect(await landDAOcrowdsale.complete()).to.be.true
-    console.log("before calling the extension")
-    await landDAOcrowdsale
-      .callExtension()
+    
+    await landDAOcrowdsale.callExtension()
+    
     expect(await purchaseToken.balanceOf(land.address)).to.equal(
       getBigNumber(100)
     )
-    expect(await land.balanceOf(alice.address)).to.equal(getBigNumber(95000))
+    expect(await land.balanceOf(alice.address)).to.equal(getBigNumber(95000, 0))
   })
   it("Should process escape proposal", async function () {
     await land.init(
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
-    await land.propose(
-      0,
-      "TEST",
-      [proposer.address],
-      [getBigNumber(1000)],
-      [0x00]
-    )
+    await land.propose(ProposalType["QUORUM"], "TEST", [proposer.address], [100], [0x00])
     await land.vote(1, true)
-    await land.propose(
-      0,
-      "TEST",
-      [proposer.address],
-      [getBigNumber(99)],
-      [0x00]
-    )
-    await land.vote(2, false)
-    await land.propose(10, "TEST", [proposer.address], [2], [0x00])
+    await land.propose(ProposalType["QUORUM"], "TEST", [proposer.address], [75], [0x00])
+    await land.vote(2, true)
+    await land.propose(ProposalType["ESCAPE"], "TEST", [proposer.address], [2], [0x00])
     await land.vote(3, true)
-    await advanceTime(35)
+    await advanceTime(minVoteTime + 1)
     await land.processProposal(3)
+
+    expect(await land.processProposal(2).should.be.reverted)
+    await land.processProposal(1)
+
+    expect(await land.quorum()).to.equal(100)
     // Proposal #1 remains intact
     // console.log(await land.proposals(0))
     // Proposal #2 deleted
@@ -1188,30 +1191,300 @@ describe("LandDAO", function () {
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
-    await land.propose(11, "TEST", [], [], [])
+    await land.propose(ProposalType["DOCS"], "TEST", [], [], [])
     await land.vote(1, true)
-    await advanceTime(35)
+    await advanceTime(minVoteTime + 1)
     await land.processProposal(1)
     expect(await land.docs()).to.equal("TEST")
   })
+  // Process LandDAO introduced proposals
+  //
+  //
+  it("Should process manager proposal", async function () {
+    await land.init(
+      "KALI",
+      "KALI",
+      "DOCS",
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
+    )
+    await land.propose(ProposalType["MANAGER"], "TEST", [alice.address], [0], [0x00])
+    await land.vote(1, true)
+    await advanceTime(minVoteTime + 1)
+    await land.processProposal(1)
+    expect(await land.manager()).to.equal(alice.address)
+  })
+  it("Should not allow a zero address manager", async function () {
+    await land.init(
+      "KALI",
+      "KALI",
+      "DOCS",
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
+    )
+
+    expect(await land.propose(ProposalType["MANAGER"], "TEST", [0x0], [0], [0x00]).should.be.reverted)
+  })
+  it("Should process PURCHASE proposal by moving funds to manager account", async function () {
+    // Instantiate purchaseToken
+    let PurchaseToken = await ethers.getContractFactory("Dai")
+    let purchaseToken = await PurchaseToken.deploy()
+    await purchaseToken.deployed()
+    await purchaseToken.init(
+      [alice.address, proposer.address],
+      [getBigNumber(1000), getBigNumber(1000)]
+    )
+    
+    await land.init(
+      "KALI",
+      "KALI",
+      "DOCS",
+      purchaseToken.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
+    )
+
+    // Instantiate LandWhiteListManager
+    let LandWhitelistManager = await ethers.getContractFactory(
+      "KaliAccessManager"
+    )
+    let landWhitelistManager = await LandWhitelistManager.deploy()
+    await landWhitelistManager.deployed()
+    // Instantiate extension contract
+    let LandDAOcrowdsale = await ethers.getContractFactory("LandDAOcrowdsale")
+    let landDAOcrowdsale = await LandDAOcrowdsale.deploy(
+      landWhitelistManager.address,
+      wethAddress,
+      purchaseToken.address
+    )
+    await landDAOcrowdsale.deployed()
+    // Set up whitelist
+    await landWhitelistManager.createList(
+      [alice.address],
+      "0x074b43252ffb4a469154df5fb7fe4ecce30953ba8b7095fe1e006185f017ad10"
+    )
+    // Set up payload for extension proposal
+    let payload = ethers.utils.defaultAbiCoder.encode(
+      ["address", "uint96", "uint256"],
+      [purchaseToken.address, getBigNumber(1000), getBigNumber(100)]
+    )
+
+    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [1], [payload])
+    await land.vote(1, true)
+    await advanceTime(minVoteTime + 1)
+    await land.processProposal(1)
+
+    const result = await signDaiPermit(ethers.provider, purchaseToken.address, alice.address, landDAOcrowdsale.address);
+
+    await landDAOcrowdsale
+      .connect(alice)
+      .contribute(getBigNumber(100), result.nonce, result.expiry, result.v, result.r, result.s)
+    
+    expect(await purchaseToken.balanceOf(land.address)).to.equal(getBigNumber(0))
+    expect(await purchaseToken.balanceOf(landDAOcrowdsale.address)).to.equal(getBigNumber(100))
+    expect(await purchaseToken.balanceOf(alice.address)).to.equal(getBigNumber(900))
+
+    await landDAOcrowdsale.callExtension()
+    // funding and minting are now complete
+    // now we make sure it can be purchased
+
+    expect(await purchaseToken.balanceOf(land.address)).to.equal(getBigNumber(100))
+    expect(await purchaseToken.balanceOf(landDAOcrowdsale.address)).to.equal(getBigNumber(0))
+    expect(await land.lootBalanceOf(proposer.address)).to.equal(getBigNumber(0))
+
+    await land.propose(ProposalType["PURCHASE"], "TEST", [alice.address], [getBigNumber(90)], [0x00])
+    await land.vote(2, true)
+    await land.connect(alice).vote(2, true)
+    await advanceTime(minVoteTime + 1)
+    await land.processProposal(2)
+    expect(await land.lootBalanceOf(proposer.address)).to.equal(getBigNumber(90))
+    expect(await land.lootBalanceOf(alice.address)).to.equal(getBigNumber(0))
+  })
+  it("Should process EXIT proposal before state change", async function () {
+    // Instantiate purchaseToken
+    let PurchaseToken = await ethers.getContractFactory("Dai")
+    let purchaseToken = await PurchaseToken.deploy()
+    await purchaseToken.deployed()
+    await purchaseToken.init(
+      [alice.address, proposer.address],
+      [getBigNumber(1000), getBigNumber(1000)]
+    )
+    
+    await land.init(
+      "KALI",
+      "KALI",
+      "DOCS",
+      purchaseToken.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
+    )
+
+    // Instantiate LandWhiteListManager
+    let LandWhitelistManager = await ethers.getContractFactory(
+      "KaliAccessManager"
+    )
+    let landWhitelistManager = await LandWhitelistManager.deploy()
+    await landWhitelistManager.deployed()
+    // Instantiate extension contract
+    let LandDAOcrowdsale = await ethers.getContractFactory("LandDAOcrowdsale")
+    let landDAOcrowdsale = await LandDAOcrowdsale.deploy(
+      landWhitelistManager.address,
+      wethAddress,
+      purchaseToken.address
+    )
+    await landDAOcrowdsale.deployed()
+    // Set up whitelist
+    await landWhitelistManager.createList(
+      [alice.address],
+      "0x074b43252ffb4a469154df5fb7fe4ecce30953ba8b7095fe1e006185f017ad10"
+    )
+    // Set up payload for extension proposal
+    let payload = ethers.utils.defaultAbiCoder.encode(
+      ["address", "uint96", "uint256"],
+      [purchaseToken.address, getBigNumber(1000), getBigNumber(100)]
+    )
+
+    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [1], [payload])
+    await land.vote(1, true)
+    await advanceTime(minVoteTime + 1)
+    await land.processProposal(1)
+
+    const result = await signDaiPermit(ethers.provider, purchaseToken.address, alice.address, landDAOcrowdsale.address);
+
+    await landDAOcrowdsale
+      .connect(alice)
+      .contribute(getBigNumber(100), result.nonce, result.expiry, result.v, result.r, result.s)
+    
+    await landDAOcrowdsale.callExtension()
+    // funding and minting are now complete
+    // now we make sure it can be purchased
+
+    expect(await land.lootBalanceOf(alice.address)).to.equal(getBigNumber(0))
+
+    await land.propose(ProposalType["EXIT"], "TEST", [], [], [])
+
+    await land.vote(2, true)
+    await land.connect(alice).vote(2, true)
+    await advanceTime(minVoteTime + 1)
+    await land.processProposal(2)
+
+    expect(await land.lootBalanceOf(alice.address)).to.equal(getBigNumber(100))
+    
+  })
+
+  it("Should process EXIT proposal after the state change", async function () {
+    // Instantiate purchaseToken
+    let PurchaseToken = await ethers.getContractFactory("Dai")
+    let purchaseToken = await PurchaseToken.deploy()
+    await purchaseToken.deployed()
+    await purchaseToken.init(
+      [alice.address, proposer.address],
+      [getBigNumber(1000), getBigNumber(1000)]
+    )
+    
+    await land.init(
+      "KALI",
+      "KALI",
+      "DOCS",
+      purchaseToken.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
+    )
+
+    // Instantiate LandWhiteListManager
+    let LandWhitelistManager = await ethers.getContractFactory(
+      "KaliAccessManager"
+    )
+    let landWhitelistManager = await LandWhitelistManager.deploy()
+    await landWhitelistManager.deployed()
+    // Instantiate extension contract
+    let LandDAOcrowdsale = await ethers.getContractFactory("LandDAOcrowdsale")
+    let landDAOcrowdsale = await LandDAOcrowdsale.deploy(
+      landWhitelistManager.address,
+      wethAddress,
+      purchaseToken.address
+    )
+    await landDAOcrowdsale.deployed()
+    // Set up whitelist
+    await landWhitelistManager.createList(
+      [alice.address],
+      "0x074b43252ffb4a469154df5fb7fe4ecce30953ba8b7095fe1e006185f017ad10"
+    )
+    // Set up payload for extension proposal
+    let payload = ethers.utils.defaultAbiCoder.encode(
+      ["address", "uint96", "uint256"],
+      [purchaseToken.address, getBigNumber(1000), getBigNumber(100)]
+    )
+
+    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [1], [payload])
+    await land.vote(1, true)
+    await advanceTime(minVoteTime + 1)
+    await land.processProposal(1)
+
+    const result = await signDaiPermit(ethers.provider, purchaseToken.address, alice.address, landDAOcrowdsale.address);
+
+    await landDAOcrowdsale
+      .connect(alice)
+      .contribute(getBigNumber(100), result.nonce, result.expiry, result.v, result.r, result.s)
+    
+    await landDAOcrowdsale.callExtension()
+    // funding and minting are now complete
+    // now we make sure it can be purchased
+
+    expect(await land.lootBalanceOf(alice.address)).to.equal(getBigNumber(0))
+
+    await land.setState(1)
+
+    await land.propose(ProposalType["EXIT"], "TEST", [], [], [])
+
+    await land.vote(2, true)
+    await land.connect(alice).vote(2, true)
+    await advanceTime(minVoteTime + 1)
+    await land.processProposal(2)
+
+    expect(await land.lootBalanceOf(alice.address)).to.equal(getBigNumber(95))
+    expect(await land.lootBalanceOf(proposer.address)).to.equal(getBigNumber(5))
+    
+  })
+
+  // Test deposit dividend and withdraw
+
+
   it("Should forbid processing a non-existent proposal", async function () {
     await land.init(
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
     expect(await land.processProposal(2).should.be.reverted)
   })
@@ -1220,22 +1493,16 @@ describe("LandDAO", function () {
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
-    await land.propose(
-      0,
-      "TEST",
-      [proposer.address],
-      [getBigNumber(1000)],
-      [0x00]
-    )
+    await land.propose(ProposalType["QUORUM"], "TEST", [proposer.address], [100], [0x00])
     await land.vote(1, true)
-    await advanceTime(35)
+    await advanceTime(minVoteTime + 1)
     await land.processProposal(1)
     expect(await land.processProposal(1).should.be.reverted)
   })
@@ -1244,22 +1511,16 @@ describe("LandDAO", function () {
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
-    await land.propose(
-      0,
-      "TEST",
-      [proposer.address],
-      [getBigNumber(1000)],
-      [0x00]
-    )
+    await land.propose(ProposalType["QUORUM"], "TEST", [proposer.address], [100], [0x00])
     await land.vote(1, true)
-    await advanceTime(20)
+    await advanceTime(minVoteTime - 12)
     expect(await land.processProposal(1).should.be.reverted)
   })
   it("Should forbid processing a proposal before previous processes", async function () {
@@ -1267,568 +1528,544 @@ describe("LandDAO", function () {
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
-    // normal
-    await land.propose(
-      0,
-      "TEST",
-      [proposer.address],
-      [getBigNumber(1000)],
-      [0x00]
-    )
-    await land.vote(1, true)
-    await advanceTime(35)
-    await land.processProposal(1)
-    // check case
-    await land.propose(
-      0,
-      "TEST",
-      [proposer.address],
-      [getBigNumber(1000)],
-      [0x00]
-    )
+    await land.propose(ProposalType["QUORUM"], "TEST", [proposer.address], [100], [0x00])
+    await land.propose(ProposalType["QUORUM"], "TEST", [proposer.address], [100], [0x00])
     await land.vote(2, true)
-    await land.propose(
-      0,
-      "TEST",
-      [proposer.address],
-      [getBigNumber(1000)],
-      [0x00]
-    )
-    await land.vote(3, true)
-    await advanceTime(35)
-    expect(await land.processProposal(3).should.be.reverted)
+    await land.vote(1, true)
+    await advanceTime(minVoteTime + 1)
+    expect(await land.processProposal(2).should.be.reverted)
+    await land.processProposal(1)
     await land.processProposal(2)
-    await land.processProposal(3)
   })
-  it("Should forbid calling a non-whitelisted extension", async function () {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    expect(await land.callExtension(wethAddress, 10, 0x0).should.be.reverted)
-  })
-  it("Should forbid non-whitelisted extension calling DAO", async function () {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    expect(await land.connect(alice).callExtension(bob.address, 10, 0x0).should.be.reverted)
-  })
-  it("Should allow a member to transfer shares", async function () {
-    let sender, receiver
-    ;[sender, receiver] = await ethers.getSigners()
+  // it("Should forbid calling a non-whitelisted extension", async function () {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     dai.address,
+  //     [], // addresses of extensions
+  //     [], // data for extensions
+  //     [0, 60], // quorum, supermajority
+  //     Array(numProposals).fill(1), // vote type
+  //     Array(numProposals).fill(minVoteTime) // vote time
+  //   )
+  //   expect(await land.callExtension(wethAddress, 10, 0x0).should.be.reverted)
+  // })
+  // it("Should forbid non-whitelisted extension calling DAO", async function () {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     true,
+  //     [],
+  //     [],
+  //     [proposer.address],
+  //     [getBigNumber(1)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   expect(await land.connect(alice).callExtension(bob.address, 10, 0x0).should.be.reverted)
+  // })
+  // it("Should allow a member to transfer shares", async function () {
+  //   let sender, receiver
+  //   ;[sender, receiver] = await ethers.getSigners()
 
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      false,
-      [],
-      [],
-      [sender.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    await land.transfer(receiver.address, getBigNumber(4))
-    expect(await land.balanceOf(sender.address)).to.equal(getBigNumber(6))
-    expect(await land.balanceOf(receiver.address)).to.equal(getBigNumber(4))
-    // console.log(await land.balanceOf(sender.address))
-    // console.log(await land.balanceOf(receiver.address))
-  })
-  it("Should not allow a member to transfer excess shares", async function () {
-    let sender, receiver
-    ;[sender, receiver] = await ethers.getSigners()
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     false,
+  //     [],
+  //     [],
+  //     [sender.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   await land.transfer(receiver.address, getBigNumber(4))
+  //   expect(await land.balanceOf(sender.address)).to.equal(getBigNumber(6))
+  //   expect(await land.balanceOf(receiver.address)).to.equal(getBigNumber(4))
+  //   // console.log(await land.balanceOf(sender.address))
+  //   // console.log(await land.balanceOf(receiver.address))
+  // })
+  // it("Should not allow a member to transfer excess shares", async function () {
+  //   let sender, receiver
+  //   ;[sender, receiver] = await ethers.getSigners()
 
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      false,
-      [],
-      [],
-      [sender.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    expect(
-      await land.transfer(receiver.address, getBigNumber(11)).should.be.reverted
-    )
-  })
-  it("Should not allow a member to transfer shares if paused", async function () {
-    let sender, receiver
-    ;[sender, receiver] = await ethers.getSigners()
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     false,
+  //     [],
+  //     [],
+  //     [sender.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   expect(
+  //     await land.transfer(receiver.address, getBigNumber(11)).should.be.reverted
+  //   )
+  // })
+  // it("Should not allow a member to transfer shares if paused", async function () {
+  //   let sender, receiver
+  //   ;[sender, receiver] = await ethers.getSigners()
 
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [sender.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    expect(
-      await land.transfer(receiver.address, getBigNumber(1)).should.be.reverted
-    )
-  })
-  it("Should allow a member to burn shares", async function () {
-    let sender, receiver
-    ;[sender, receiver] = await ethers.getSigners()
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     true,
+  //     [],
+  //     [],
+  //     [sender.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   expect(
+  //     await land.transfer(receiver.address, getBigNumber(1)).should.be.reverted
+  //   )
+  // })
+  // it("Should allow a member to burn shares", async function () {
+  //   let sender, receiver
+  //   ;[sender, receiver] = await ethers.getSigners()
 
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [sender.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    await land.burn(getBigNumber(1))
-  })
-  it("Should not allow a member to burn excess shares", async function () {
-    let sender, receiver
-    ;[sender, receiver] = await ethers.getSigners()
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     true,
+  //     [],
+  //     [],
+  //     [sender.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   await land.burn(getBigNumber(1))
+  // })
+  // it("Should not allow a member to burn excess shares", async function () {
+  //   let sender, receiver
+  //   ;[sender, receiver] = await ethers.getSigners()
 
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [sender.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    expect(
-      await land.burn(getBigNumber(11)).should.be.reverted
-    )
-  })
-  it("Should allow a member to approve burn of shares (burnFrom)", async function () {
-    let sender, receiver
-    ;[sender, receiver] = await ethers.getSigners()
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     true,
+  //     [],
+  //     [],
+  //     [sender.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   expect(
+  //     await land.burn(getBigNumber(11)).should.be.reverted
+  //   )
+  // })
+  // it("Should allow a member to approve burn of shares (burnFrom)", async function () {
+  //   let sender, receiver
+  //   ;[sender, receiver] = await ethers.getSigners()
 
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [sender.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    await land.approve(receiver.address, getBigNumber(1))
-    expect(await land.allowance(sender.address, receiver.address)).to.equal(getBigNumber(1))
-    await land.connect(receiver).burnFrom(sender.address, getBigNumber(1))
-  })
-  it("Should not allow a member to approve excess burn of shares (burnFrom)", async function () {
-    let sender, receiver
-    ;[sender, receiver] = await ethers.getSigners()
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     true,
+  //     [],
+  //     [],
+  //     [sender.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   await land.approve(receiver.address, getBigNumber(1))
+  //   expect(await land.allowance(sender.address, receiver.address)).to.equal(getBigNumber(1))
+  //   await land.connect(receiver).burnFrom(sender.address, getBigNumber(1))
+  // })
+  // it("Should not allow a member to approve excess burn of shares (burnFrom)", async function () {
+  //   let sender, receiver
+  //   ;[sender, receiver] = await ethers.getSigners()
 
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [sender.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    await land.approve(receiver.address, getBigNumber(1))
-    expect(await land.allowance(sender.address, receiver.address)).to.equal(getBigNumber(1))
-    expect(await land.connect(receiver).burnFrom(sender.address, getBigNumber(8)).should.be.reverted)
-    expect(await land.connect(receiver).burnFrom(sender.address, getBigNumber(11)).should.be.reverted)
-  })
-  it("Should allow a member to approve pull transfers", async function () {
-    let sender, receiver
-    ;[sender, receiver] = await ethers.getSigners()
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     true,
+  //     [],
+  //     [],
+  //     [sender.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   await land.approve(receiver.address, getBigNumber(1))
+  //   expect(await land.allowance(sender.address, receiver.address)).to.equal(getBigNumber(1))
+  //   expect(await land.connect(receiver).burnFrom(sender.address, getBigNumber(8)).should.be.reverted)
+  //   expect(await land.connect(receiver).burnFrom(sender.address, getBigNumber(11)).should.be.reverted)
+  // })
+  // it("Should allow a member to approve pull transfers", async function () {
+  //   let sender, receiver
+  //   ;[sender, receiver] = await ethers.getSigners()
 
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      false,
-      [],
-      [],
-      [sender.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    await land.approve(receiver.address, getBigNumber(4))
-    expect(await land.allowance(sender.address, receiver.address)).to.equal(getBigNumber(4))
-  })
-  it("Should allow an approved account to pull transfer (transferFrom)", async function () {
-    let sender, receiver
-    ;[sender, receiver] = await ethers.getSigners()
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     false,
+  //     [],
+  //     [],
+  //     [sender.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   await land.approve(receiver.address, getBigNumber(4))
+  //   expect(await land.allowance(sender.address, receiver.address)).to.equal(getBigNumber(4))
+  // })
+  // it("Should allow an approved account to pull transfer (transferFrom)", async function () {
+  //   let sender, receiver
+  //   ;[sender, receiver] = await ethers.getSigners()
 
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      false,
-      [],
-      [],
-      [sender.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    await land.approve(receiver.address, getBigNumber(4))
-    expect(await land.allowance(sender.address, receiver.address)).to.equal(getBigNumber(4))
-    await land.connect(receiver).transferFrom(sender.address, receiver.address, getBigNumber(4))
-  })
-  it("Should not allow an account to pull transfer (transferFrom) beyond approval", async function () {
-    let sender, receiver
-    ;[sender, receiver] = await ethers.getSigners()
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     false,
+  //     [],
+  //     [],
+  //     [sender.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   await land.approve(receiver.address, getBigNumber(4))
+  //   expect(await land.allowance(sender.address, receiver.address)).to.equal(getBigNumber(4))
+  //   await land.connect(receiver).transferFrom(sender.address, receiver.address, getBigNumber(4))
+  // })
+  // it("Should not allow an account to pull transfer (transferFrom) beyond approval", async function () {
+  //   let sender, receiver
+  //   ;[sender, receiver] = await ethers.getSigners()
 
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      false,
-      [],
-      [],
-      [sender.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    await land.approve(receiver.address, getBigNumber(4))
-    expect(await land.allowance(sender.address, receiver.address)).to.equal(getBigNumber(4))
-    expect(await land.connect(receiver).transferFrom(sender.address, receiver.address, getBigNumber(5)).should.be.reverted)
-  })
-  it("Should not allow an approved account to pull transfer (transferFrom) if paused", async function () {
-    let sender, receiver
-    ;[sender, receiver] = await ethers.getSigners()
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     false,
+  //     [],
+  //     [],
+  //     [sender.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   await land.approve(receiver.address, getBigNumber(4))
+  //   expect(await land.allowance(sender.address, receiver.address)).to.equal(getBigNumber(4))
+  //   expect(await land.connect(receiver).transferFrom(sender.address, receiver.address, getBigNumber(5)).should.be.reverted)
+  // })
+  // it("Should not allow an approved account to pull transfer (transferFrom) if paused", async function () {
+  //   let sender, receiver
+  //   ;[sender, receiver] = await ethers.getSigners()
 
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [sender.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    await land.approve(receiver.address, getBigNumber(4))
-    expect(await land.allowance(sender.address, receiver.address)).to.equal(getBigNumber(4))
-    expect(await land.connect(receiver).transferFrom(sender.address, receiver.address, getBigNumber(4)).should.be.reverted)
-  })
-  it("Should not allow vote tally after current timestamp", async function () {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [bob.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    expect(
-      await land.getPriorVotes(bob.address, 1941275221).should.be.reverted
-    )
-  })
-  it("Should list member as 'delegate' if no delegation to others", async function () {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [bob.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    expect(await land.delegates(bob.address)).to.equal(bob.address)
-  })
-  it("Should match current votes to undelegated balance", async function () {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [bob.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    expect(await land.getCurrentVotes(bob.address)).to.equal(getBigNumber(10))
-  })
-  it("Should allow vote delegation", async function () {
-    let sender, receiver
-    ;[sender, receiver] = await ethers.getSigners()
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     true,
+  //     [],
+  //     [],
+  //     [sender.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   await land.approve(receiver.address, getBigNumber(4))
+  //   expect(await land.allowance(sender.address, receiver.address)).to.equal(getBigNumber(4))
+  //   expect(await land.connect(receiver).transferFrom(sender.address, receiver.address, getBigNumber(4)).should.be.reverted)
+  // })
+  // it("Should not allow vote tally after current timestamp", async function () {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     true,
+  //     [],
+  //     [],
+  //     [bob.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   expect(
+  //     await land.getPriorVotes(bob.address, 1941275221).should.be.reverted
+  //   )
+  // })
+  // it("Should list member as 'delegate' if no delegation to others", async function () {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     true,
+  //     [],
+  //     [],
+  //     [bob.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   expect(await land.delegates(bob.address)).to.equal(bob.address)
+  // })
+  // it("Should match current votes to undelegated balance", async function () {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     true,
+  //     [],
+  //     [],
+  //     [bob.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   expect(await land.getCurrentVotes(bob.address)).to.equal(getBigNumber(10))
+  // })
+  // it("Should allow vote delegation", async function () {
+  //   let sender, receiver
+  //   ;[sender, receiver] = await ethers.getSigners()
 
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [sender.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    await land.delegate(receiver.address)
-    expect(await land.delegates(sender.address)).to.equal(receiver.address)
-    expect(await land.getCurrentVotes(sender.address)).to.equal(0)
-    expect(await land.getCurrentVotes(receiver.address)).to.equal(getBigNumber(10))
-    expect(await land.balanceOf(sender.address)).to.equal(getBigNumber(10))
-    expect(await land.balanceOf(receiver.address)).to.equal(0)
-    await land.delegate(sender.address)
-    expect(await land.delegates(sender.address)).to.equal(sender.address)
-    expect(await land.getCurrentVotes(sender.address)).to.equal(getBigNumber(10))
-    expect(await land.getCurrentVotes(receiver.address)).to.equal(0)
-  })
-  it("Should update delegated balance after transfer", async function () {
-    let sender, receiver, receiver2
-    ;[sender, receiver, receiver2] = await ethers.getSigners()
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     true,
+  //     [],
+  //     [],
+  //     [sender.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   await land.delegate(receiver.address)
+  //   expect(await land.delegates(sender.address)).to.equal(receiver.address)
+  //   expect(await land.getCurrentVotes(sender.address)).to.equal(0)
+  //   expect(await land.getCurrentVotes(receiver.address)).to.equal(getBigNumber(10))
+  //   expect(await land.balanceOf(sender.address)).to.equal(getBigNumber(10))
+  //   expect(await land.balanceOf(receiver.address)).to.equal(0)
+  //   await land.delegate(sender.address)
+  //   expect(await land.delegates(sender.address)).to.equal(sender.address)
+  //   expect(await land.getCurrentVotes(sender.address)).to.equal(getBigNumber(10))
+  //   expect(await land.getCurrentVotes(receiver.address)).to.equal(0)
+  // })
+  // it("Should update delegated balance after transfer", async function () {
+  //   let sender, receiver, receiver2
+  //   ;[sender, receiver, receiver2] = await ethers.getSigners()
 
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      false,
-      [],
-      [],
-      [sender.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    await land.delegate(receiver.address)
-    expect(await land.getCurrentVotes(sender.address)).to.equal(0)
-    expect(await land.getCurrentVotes(receiver.address)).to.equal(getBigNumber(10))
-    await land.transfer(receiver2.address, getBigNumber(5))
-    expect(await land.getCurrentVotes(receiver2.address)).to.equal(getBigNumber(5))
-    expect(await land.getCurrentVotes(sender.address)).to.equal(0)
-    expect(await land.getCurrentVotes(receiver.address)).to.equal(getBigNumber(5))
-    await land.delegate(sender.address)
-    expect(await land.getCurrentVotes(sender.address)).to.equal(getBigNumber(5))
-  })
-  it("Should update delegated balance after pull transfer (transferFrom)", async function () {
-    let sender, receiver, receiver2
-    ;[sender, receiver, receiver2] = await ethers.getSigners()
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     false,
+  //     [],
+  //     [],
+  //     [sender.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   await land.delegate(receiver.address)
+  //   expect(await land.getCurrentVotes(sender.address)).to.equal(0)
+  //   expect(await land.getCurrentVotes(receiver.address)).to.equal(getBigNumber(10))
+  //   await land.transfer(receiver2.address, getBigNumber(5))
+  //   expect(await land.getCurrentVotes(receiver2.address)).to.equal(getBigNumber(5))
+  //   expect(await land.getCurrentVotes(sender.address)).to.equal(0)
+  //   expect(await land.getCurrentVotes(receiver.address)).to.equal(getBigNumber(5))
+  //   await land.delegate(sender.address)
+  //   expect(await land.getCurrentVotes(sender.address)).to.equal(getBigNumber(5))
+  // })
+  // it("Should update delegated balance after pull transfer (transferFrom)", async function () {
+  //   let sender, receiver, receiver2
+  //   ;[sender, receiver, receiver2] = await ethers.getSigners()
 
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      false,
-      [],
-      [],
-      [sender.address],
-      [getBigNumber(10)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    await land.delegate(receiver.address)
-    expect(await land.getCurrentVotes(sender.address)).to.equal(0)
-    expect(await land.getCurrentVotes(receiver.address)).to.equal(getBigNumber(10))
-    await land.approve(receiver.address, getBigNumber(5))
-    await land.connect(receiver).transferFrom(sender.address, receiver2.address, getBigNumber(5))
-    expect(await land.getCurrentVotes(receiver2.address)).to.equal(getBigNumber(5))
-    expect(await land.getCurrentVotes(sender.address)).to.equal(0)
-    expect(await land.getCurrentVotes(receiver.address)).to.equal(getBigNumber(5))
-    await land.delegate(sender.address)
-    expect(await land.getCurrentVotes(sender.address)).to.equal(getBigNumber(5))
-  })
-  it("Should allow permit if the signature is valid", async () => {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    const domain = {
-      name: "KALI",
-      version: "1",
-      chainId: 31337,
-      verifyingContract: land.address,
-    }
-    const types = {
-      Permit: [
-        { name: "owner", type: "address" },
-        { name: "spender", type: "address" },
-        { name: "value", type: "uint256" },
-        { name: "nonce", type: "uint256" },
-        { name: "deadline", type: "uint256" },
-      ],
-    }
-    const value = {
-      owner: proposer.address,
-      spender: bob.address,
-      value: getBigNumber(1),
-      nonce: 0,
-      deadline: 1941543121
-    }
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     false,
+  //     [],
+  //     [],
+  //     [sender.address],
+  //     [getBigNumber(10)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   await land.delegate(receiver.address)
+  //   expect(await land.getCurrentVotes(sender.address)).to.equal(0)
+  //   expect(await land.getCurrentVotes(receiver.address)).to.equal(getBigNumber(10))
+  //   await land.approve(receiver.address, getBigNumber(5))
+  //   await land.connect(receiver).transferFrom(sender.address, receiver2.address, getBigNumber(5))
+  //   expect(await land.getCurrentVotes(receiver2.address)).to.equal(getBigNumber(5))
+  //   expect(await land.getCurrentVotes(sender.address)).to.equal(0)
+  //   expect(await land.getCurrentVotes(receiver.address)).to.equal(getBigNumber(5))
+  //   await land.delegate(sender.address)
+  //   expect(await land.getCurrentVotes(sender.address)).to.equal(getBigNumber(5))
+  // })
+  // it("Should allow permit if the signature is valid", async () => {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     true,
+  //     [],
+  //     [],
+  //     [proposer.address],
+  //     [getBigNumber(1)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   const domain = {
+  //     name: "KALI",
+  //     version: "1",
+  //     chainId: 31337,
+  //     verifyingContract: land.address,
+  //   }
+  //   const types = {
+  //     Permit: [
+  //       { name: "owner", type: "address" },
+  //       { name: "spender", type: "address" },
+  //       { name: "value", type: "uint256" },
+  //       { name: "nonce", type: "uint256" },
+  //       { name: "deadline", type: "uint256" },
+  //     ],
+  //   }
+  //   const value = {
+  //     owner: proposer.address,
+  //     spender: bob.address,
+  //     value: getBigNumber(1),
+  //     nonce: 0,
+  //     deadline: 1941543121
+  //   }
 
-    const signature = await proposer._signTypedData(domain, types, value)
-    const { r, s, v } = ethers.utils.splitSignature(signature)
+  //   const signature = await proposer._signTypedData(domain, types, value)
+  //   const { r, s, v } = ethers.utils.splitSignature(signature)
     
-    await land.permit(proposer.address, bob.address, getBigNumber(1), 1941543121, v, r, s)
+  //   await land.permit(proposer.address, bob.address, getBigNumber(1), 1941543121, v, r, s)
 
-    // Unpause to unblock transferFrom
-    await land.propose(8, "TEST", [proposer.address], [0], [0x00])
-    await land.vote(1, true)
-    await advanceTime(35)
-    await land.processProposal(1)
-    expect(await land.paused()).to.equal(false)
+  //   // Unpause to unblock transferFrom
+  //   await land.propose(8, "TEST", [proposer.address], [0], [0x00])
+  //   await land.vote(1, true)
+  //   await advanceTime(35)
+  //   await land.processProposal(1)
+  //   expect(await land.paused()).to.equal(false)
 
-    // console.log(
-    //   "Proposer's balance before delegation: ",
-    //   await land.balanceOf(proposer.address)
-    // )
-    // console.log(
-    //   "Bob's balance before delegation: ",
-    //   await land.balanceOf(bob.address)
-    // )
-    await land.connect(bob).transferFrom(proposer.address, bob.address, getBigNumber(1))
-    // console.log(
-    //   "Proposer's balance after delegation: ",
-    //   await land.balanceOf(proposer.address)
-    // )
-    // console.log(
-    //   "Bob's balance after delegation: ",
-    //   await land.balanceOf(bob.address)
-    // )
-    expect(await land.balanceOf(bob.address)).to.equal(getBigNumber(1))
-  })
-  it("Should revert permit if the signature is invalid", async () => {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    const rs = ethers.utils.formatBytes32String("rs")
-    expect(
-      await land.permit(proposer.address, bob.address, getBigNumber(1), 1941525801, 0, rs, rs).should.be.reverted
-    )
-  })
-  it("Should allow delegateBySig if the signature is valid", async () => {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    const domain = {
-      name: "KALI",
-      version: "1",
-      chainId: 31337,
-      verifyingContract: land.address,
-    }
-    const types = {
-      Delegation: [
-        { name: "delegatee", type: "address" },
-        { name: "nonce", type: "uint256" },
-        { name: "expiry", type: "uint256" },
-      ],
-    }
-    const value = {
-      delegatee: bob.address,
-      nonce: 0,
-      expiry: 1941543121
-    }
+  //   // console.log(
+  //   //   "Proposer's balance before delegation: ",
+  //   //   await land.balanceOf(proposer.address)
+  //   // )
+  //   // console.log(
+  //   //   "Bob's balance before delegation: ",
+  //   //   await land.balanceOf(bob.address)
+  //   // )
+  //   await land.connect(bob).transferFrom(proposer.address, bob.address, getBigNumber(1))
+  //   // console.log(
+  //   //   "Proposer's balance after delegation: ",
+  //   //   await land.balanceOf(proposer.address)
+  //   // )
+  //   // console.log(
+  //   //   "Bob's balance after delegation: ",
+  //   //   await land.balanceOf(bob.address)
+  //   // )
+  //   expect(await land.balanceOf(bob.address)).to.equal(getBigNumber(1))
+  // })
+  // it("Should revert permit if the signature is invalid", async () => {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     true,
+  //     [],
+  //     [],
+  //     [proposer.address],
+  //     [getBigNumber(1)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   const rs = ethers.utils.formatBytes32String("rs")
+  //   expect(
+  //     await land.permit(proposer.address, bob.address, getBigNumber(1), 1941525801, 0, rs, rs).should.be.reverted
+  //   )
+  // })
+  // it("Should allow delegateBySig if the signature is valid", async () => {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     true,
+  //     [],
+  //     [],
+  //     [proposer.address],
+  //     [getBigNumber(1)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   const domain = {
+  //     name: "KALI",
+  //     version: "1",
+  //     chainId: 31337,
+  //     verifyingContract: land.address,
+  //   }
+  //   const types = {
+  //     Delegation: [
+  //       { name: "delegatee", type: "address" },
+  //       { name: "nonce", type: "uint256" },
+  //       { name: "expiry", type: "uint256" },
+  //     ],
+  //   }
+  //   const value = {
+  //     delegatee: bob.address,
+  //     nonce: 0,
+  //     expiry: 1941543121
+  //   }
 
-    const signature = await proposer._signTypedData(domain, types, value)
-    const { r, s, v } = ethers.utils.splitSignature(signature)
+  //   const signature = await proposer._signTypedData(domain, types, value)
+  //   const { r, s, v } = ethers.utils.splitSignature(signature)
 
-    land.delegateBySig(bob.address, 0, 1941525801, v, r, s)
-  })
-  it("Should revert delegateBySig if the signature is invalid", async () => {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
-    const rs = ethers.utils.formatBytes32String("rs")
-    expect(
-      await land.delegateBySig(bob.address, 0, 1941525801, 0, rs, rs).should.be.reverted
-    )
-  })
-  it("Should revert reentrant calls", async () => {
-    let ReentrantMock // ReentrantMock contract
-    let reentrantMock // ReentrantMock contract instance
+  //   land.delegateBySig(bob.address, 0, 1941525801, v, r, s)
+  // })
+  // it("Should revert delegateBySig if the signature is invalid", async () => {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     true,
+  //     [],
+  //     [],
+  //     [proposer.address],
+  //     [getBigNumber(1)],
+  //     [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  //   )
+  //   const rs = ethers.utils.formatBytes32String("rs")
+  //   expect(
+  //     await land.delegateBySig(bob.address, 0, 1941525801, 0, rs, rs).should.be.reverted
+  //   )
+  // })
+  // it("Should revert reentrant calls", async () => {
+  //   let ReentrantMock // ReentrantMock contract
+  //   let reentrantMock // ReentrantMock contract instance
 
-    Reentrant = await ethers.getContractFactory("ReentrantMock")
-    reentrant = await Reentrant.deploy()
-    await reentrant.deployed()
+  //   Reentrant = await ethers.getContractFactory("ReentrantMock")
+  //   reentrant = await Reentrant.deploy()
+  //   await reentrant.deployed()
 
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      true,
-      [],
-      [],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    )
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     dai.address,
+  //     [], // addresses of extensions
+  //     [], // data for extensions
+  //     [0, 60], // quorum, supermajority
+  //     Array(numProposals).fill(1), // vote type
+  //     Array(numProposals).fill(minVoteTime) // vote time
+  //   )
     
-    await land.propose(9, "TEST", [reentrant.address], [1], [0x0])
-    await land.vote(1, true)
-    await advanceTime(35)
-    await land.processProposal(1)
-    expect(await land.extensions(reentrant.address)).to.equal(true)
+  //   await land.propose(ProposalType["EXTENSION"], "TEST", [reentrant.address], [1], [0x0])
+  //   await land.vote(1, true)
+  //   await advanceTime(minVoteTime + 1)
+  //   await land.processProposal(1)
+  //   expect(await land.extensions(reentrant.address)).to.equal(true)
     
-    expect(await land.callExtension(reentrant.address, 0, "").should.be.reverted)
-  })
+  //   expect(await land.callExtension(reentrant.address, 0, "").should.be.reverted)
+  // })
   it("Should not call if null length payload", async () => {
     let CallMock // CallMock contract
     let callMock // CallMock contract instance
@@ -1841,12 +2078,12 @@ describe("LandDAO", function () {
       "KALI",
       "KALI",
       "DOCS",
-      true,
-      [callMock.address],
-      [0x00],
-      [proposer.address],
-      [getBigNumber(1)],
-      [30, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
     )
 
     expect(await callMock.called()).to.equal(false)

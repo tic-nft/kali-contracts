@@ -35,6 +35,7 @@ contract Dai {
     string  public constant name     = "Dai Stablecoin";
     string  public constant symbol   = "DAI";
     string  public constant version  = "1";
+    uint    public          chainId;
     uint8   public constant decimals = 18;
     uint256 public totalSupply;
 
@@ -44,6 +45,8 @@ contract Dai {
 
     event Approval(address indexed src, address indexed guy, uint wad);
     event Transfer(address indexed src, address indexed dst, uint wad);
+
+    event PermitFired(address holder, address spender, uint nonce, uint expiry, bool allowed, uint8 v, bytes32 r, bytes32 s, bytes32 digest);
 
     // --- Math ---
     function add(uint x, uint y) internal pure returns (uint z) {
@@ -59,13 +62,13 @@ contract Dai {
     bytes32 public constant PERMIT_TYPEHASH = 0xea2aa0a1be11a07ed86d755c93467f4f82362b452371d1ba94d1715123511acb;
 
     constructor() {
-        uint chainId_ = block.chainid;
+        chainId = block.chainid;
         wards[msg.sender] = 1;
         DOMAIN_SEPARATOR = keccak256(abi.encode(
             keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
             keccak256(bytes(name)),
             keccak256(bytes(version)),
-            chainId_,
+            chainId,
             address(this)
         ));
     }
@@ -152,6 +155,7 @@ contract Dai {
                                      allowed))
         ));
 
+        // emit PermitFired(holder, spender, nonce, expiry, allowed, v, r, s, digest);
         require(holder != address(0), "Dai/invalid-address-0");
         require(holder == ecrecover(digest, v, r, s), "Dai/invalid-permit");
         require(expiry == 0 || block.timestamp <= expiry, "Dai/permit-expired");

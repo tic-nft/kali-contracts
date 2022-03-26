@@ -6,6 +6,7 @@ import '../../libraries/SafeTransferLib.sol';
 import '../../interfaces/IKaliAccessManager.sol';
 import '../../interfaces/IKaliShareManager.sol';
 import '../../interfaces/IDAIPermit.sol';
+//import '../../tokens/erc20/Dai.sol';
 import '../../utils/Multicall.sol';
 import '../../utils/ReentrancyGuard.sol';
 
@@ -20,7 +21,7 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
         uint256 goal
     );
 
-    event ExtensionCalled(address indexed dao, address indexed purchaser, uint256 amountOut);
+    event ExtensionCalled(address indexed members, uint256 shares);
 
     event FundsContributed(address user, uint256 contribution);
 
@@ -44,13 +45,13 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
 
     address private immutable wETH;
 
-    address private immutable dai;
+    address public immutable dai;
 
     address public dao;
     uint public goal;
     uint public totalFunds;
     mapping(address => uint) public contributions;
-    address[] internal members;
+    address[] public members;
     address public fundingERC20;
     uint96 public purchaseLimit;
     bool public complete;
@@ -112,7 +113,7 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
             singleContribution = value;
         }
 
-        
+
         IDAIPermit token = IDAIPermit(dai);
         token.permit(
             msg.sender,
@@ -128,13 +129,14 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
         dai._safeTransferFrom(msg.sender, address(this), singleContribution);
         
         totalFunds += singleContribution;
-        if (contributions[msg.sender] != 0){
+        if (contributions[msg.sender] == 0){
             members.push(msg.sender);
         }
+        
         contributions[msg.sender] += singleContribution;
 
         emit FundsContributed(msg.sender, singleContribution);
-
+        
         if (totalFunds >= goal){
             complete = true;
         }
@@ -162,7 +164,7 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
         emit FundsWithdrawn(msg.sender, _reduceAmount);
     }
 
-    function callExtension() public nonReentrant virtual returns (uint256 amountOut) {
+    function callExtension() public nonReentrant virtual {
 
         if(!complete) revert NotComplete();
         if(distributed) revert Distributed();
@@ -175,8 +177,7 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
             IKaliShareManager(dao).mintShares(members[x], shares);
         }
         
-
         distributed = true;
-        emit ExtensionCalled(dao, msg.sender, amountOut);
+        emit ExtensionCalled(msg.sender, shares);
     }
 }

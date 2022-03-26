@@ -4,6 +4,8 @@ pragma solidity >=0.8.4;
 
 /// @notice EIP-2612 interface.
 interface IDAIPermit {
+    function balanceOf(address user) external returns(uint);
+
     function permit(
         address owner, 
         address spender,

@@ -7,7 +7,9 @@ import './utils/Multicall.sol';
 // import './utils/NFThelper.sol';
 import './utils/ReentrancyGuard.sol';
 import './interfaces/IKaliDAOextension.sol';
-import './interfaces/IERC20Permit.sol';
+//import './interfaces/IERC20Permit.sol';
+import './interfaces/IDAIPermit.sol';
+//import './tokens/erc20/Dai.sol';
 import './libraries/SafeTransferLib.sol';
 // import "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -80,6 +82,10 @@ contract LandDAO is Multicall, ReentrancyGuard {
 
     error NotExtension();
 
+    error ZeroManager();
+
+    error InsufficientFunds();
+
     /* FROM KaliDAOToken */
     error NoArrayParity();
 
@@ -93,7 +99,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
                             DAO STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    uint256 constant DECIMAL_SPACES = 10**18;
+    //uint256 constant DECIMAL_SPACES = 10**18;
 
     string public docs;
 
@@ -129,7 +135,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
     uint256 public totalSupply; /*counter for total `members` voting `shares` with erc20 accounting*/
     address[] public members; /* needed to iterate the member list */
 
-    address dai;
+    address public dai;
 
     // uint96 public daoValue; /* Used for capital calls to ensure fairness in minting new shares */
 
@@ -149,7 +155,15 @@ contract LandDAO is Multicall, ReentrancyGuard {
 
     mapping(uint256 => mapping(address => uint256)) public weights;
 
+    DaoState public currentState;
+
     // mapping(address => uint256) public lastYesVote;
+
+    enum DaoState {
+        STARTED,
+        PURCHASED,
+        SOLD
+    }
 
     enum ProposalType {
         // MINT, // add membership
@@ -167,10 +181,11 @@ contract LandDAO is Multicall, ReentrancyGuard {
         CAPITALCALL, // specific proposal to raise capital for expense
         SELL, // call for manager to sell property
         PURCHASE, // call to place funds in escrow for manager to use
-        MANAGER // call to set a new manager for property
+        MANAGER, // call to set a new manager for property
+        EXIT // destroy all shares and return money
     }
 
-    uint16 internal constant TYPE_COUNT = 12;
+    uint16 internal constant TYPE_COUNT = 13;
 
     enum VoteType {
         SIMPLE_MAJORITY,
@@ -248,6 +263,8 @@ contract LandDAO is Multicall, ReentrancyGuard {
         docs = docs_;
         dai = dai_;
 
+        currentState = DaoState.STARTED;
+
         INITIAL_CHAIN_ID = block.chainid;
         
         INITIAL_DOMAIN_SEPARATOR = _computeDomainSeparator();
@@ -321,7 +338,10 @@ contract LandDAO is Multicall, ReentrancyGuard {
         if (proposalType == ProposalType.SUPERMAJORITY) if (amounts[0] <= 51 || amounts[0] > 100) revert SupermajorityBounds();
 
         if (proposalType == ProposalType.TYPE) if (amounts[0] > TYPE_COUNT-1 || amounts[1] > 3 || amounts.length != 2) revert TypeBounds();
+
+        if (proposalType == ProposalType.MANAGER) if (accounts[0] == address(0)) revert ZeroManager();
         
+        if (proposalType == ProposalType.PURCHASE) if (IDAIPermit(dai).balanceOf(address(this)) < amounts[0]) revert InsufficientFunds();
 
         bool selfSponsor;
 
@@ -539,6 +559,27 @@ contract LandDAO is Multicall, ReentrancyGuard {
 
                 if (prop.proposalType == ProposalType.DOCS)
                     docs = prop.description;
+
+                if (prop.proposalType == ProposalType.MANAGER) 
+                    manager = prop.accounts[0];
+
+                if (prop.proposalType == ProposalType.PURCHASE){
+                    uint funds = IDAIPermit(dai).balanceOf(address(this));
+                    if (funds - totalLoot < prop.amounts[0]) revert InsufficientFunds();
+                    lootBalanceOf[manager] += prop.amounts[0];
+                    totalLoot += prop.amounts[0];
+                    
+                    // uint funds = IDAIPermit(dai).balanceOf(address(this));
+                    // if (funds > prop.amounts[0])
+                    //     _distributeLoot(funds - prop.amounts[0], false);
+                }
+
+                if (prop.proposalType == ProposalType.EXIT){
+                    uint funds = IDAIPermit(dai).balanceOf(address(this));
+                    if (funds > totalLoot){
+                        _distributeLoot(funds - totalLoot);
+                    }
+                }
                 
                 proposalStates[proposal].passed = true;
             }
@@ -597,20 +638,20 @@ contract LandDAO is Multicall, ReentrancyGuard {
         _;
     }
 
-    function callExtension(
-        address extension, 
-        uint256 amount, 
-        bytes calldata extensionData
-    ) public payable nonReentrant virtual returns (bool mint, uint256 amountOut) {
-        if (!extensions[extension]) revert NotExtension();
+    // function callExtension(
+    //     address extension, 
+    //     uint256 amount, 
+    //     bytes calldata extensionData
+    // ) public payable nonReentrant virtual returns (bool mint, uint256 amountOut) {
+    //     if (!extensions[extension]) revert NotExtension();
         
-        (mint, amountOut) = IKaliDAOextension(extension).callExtension{value: msg.value}
-            (msg.sender, amount, extensionData);
+    //     (mint, amountOut) = IKaliDAOextension(extension).callExtension{value: msg.value}
+    //         (msg.sender, amount, extensionData);
         
-        if (mint) {
-            if (amountOut != 0) _mint(msg.sender, amountOut);
-        }
-    }
+    //     if (mint) {
+    //         if (amountOut != 0) _mint(msg.sender, amountOut);
+    //     }
+    // }
 
     function mintShares(address to, uint256 amount) public payable onlyExtension virtual {
         _mint(to, amount);
@@ -643,34 +684,59 @@ contract LandDAO is Multicall, ReentrancyGuard {
 
     function depositDividend(
         uint256 value,
+        uint256 nonce,
         uint256 deadline,
         uint8 v,
         bytes32 r, 
         bytes32 s
     ) public onlyManager nonReentrant {
-        IERC20Permit token = IERC20Permit(dai);
+        IDAIPermit token = IDAIPermit(dai);
         token.permit(
             msg.sender,
             address(this),
-            value,
+            nonce,
             deadline,
+            true,
             v,
             r,
             s
         );
         dai._safeTransferFrom(msg.sender, address(this), value);
+        _distributeLoot(value);
+    }
+
+    function setState(DaoState newState) external onlyManager nonReentrant {
+        currentState = newState;
+    }
+
+    function _distributeLoot(uint value) internal {
+        uint supply = totalSupply;
+
+        if (currentState == DaoState.STARTED){
+            supply -= balanceOf[manager];
+        }
+
         for (uint x = 0; x < members.length; x++){
-            uint addition = (value * balanceOf[members[x]] * DECIMAL_SPACES) / totalSupply;
+            if (members[x] == manager && currentState == DaoState.STARTED) continue;
+            uint addition = (value * balanceOf[members[x]]) / supply;
             lootBalanceOf[members[x]] += addition;
             totalLoot += addition;
         }
     }
 
-    function withdraw(uint256 amount) public nonReentrant{
+    function withdraw(uint256 amount) external nonReentrant{
         if (lootBalanceOf[msg.sender] <= 0 || amount > lootBalanceOf[msg.sender]) revert NoLoot();
         
         lootBalanceOf[msg.sender] -= amount;
+        totalLoot -= amount;
         dai._safeTransferFrom(address(this), msg.sender, amount);
+    }
+
+    function contributeLoot(uint256 amount, address fundRaiseContract) external nonReentrant{
+        if (lootBalanceOf[msg.sender] < amount) revert InsufficientFunds();
+
+        lootBalanceOf[msg.sender] -= amount;
+        IFundRaise(fundRaiseContract).contributeLoot(amount);
     }
 
     function _safeCastTo32(uint256 x) internal pure virtual returns (uint32) {
