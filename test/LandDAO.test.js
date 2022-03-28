@@ -34,10 +34,11 @@ const ProposalType = {
   'ESCAPE': 6, // delete pending proposal in case of revert
   'DOCS': 7, // amend org docs
   'CAPITALCALL': 8, // specific proposal to raise capital for expense
-  'SELL': 9, // call for manager to sell property
-  'PURCHASE': 10, // call to place funds in escrow for manager to use
-  'MANAGER': 11, // call to set a new manager for property
-  'EXIT': 12 // call to divide the spoils and exit the property typically when the property could not be purchased
+  'TOKENSALE': 9,
+  'SELL': 10, // call for manager to sell property
+  'PURCHASE': 11, // call to place funds in escrow for manager to use
+  'MANAGER': 12, // call to set a new manager for property
+  'DISTRIBUTE': 13 // call to divide the spoils and exit the property typically when the property could not be purchased
 }
 
 const numProposals = Object.keys(ProposalType).length
@@ -1317,7 +1318,7 @@ describe("LandDAO", function () {
     expect(await land.lootBalanceOf(proposer.address)).to.equal(getBigNumber(90))
     expect(await land.lootBalanceOf(alice.address)).to.equal(getBigNumber(0))
   })
-  it("Should process EXIT proposal before state change", async function () {
+  it("Should process DISTRIBUTE proposal before state change", async function () {
     // Instantiate purchaseToken
     let PurchaseToken = await ethers.getContractFactory("Dai")
     let purchaseToken = await PurchaseToken.deploy()
@@ -1382,7 +1383,7 @@ describe("LandDAO", function () {
     expect(await land.lootBalanceOf(alice.address)).to.equal(getBigNumber(0))
     expect(await land.balanceOf(alice.address)).to.equal(getBigNumber(95000, 0))
 
-    await land.propose(ProposalType["EXIT"], "TEST", [], [], [])
+    await land.propose(ProposalType["DISTRIBUTE"], "TEST", [], [], [])
 
     await land.vote(2, true)
     await land.connect(alice).vote(2, true)
@@ -1394,7 +1395,7 @@ describe("LandDAO", function () {
     
   })
 
-  it("Should process EXIT proposal after the state change", async function () {
+  it("Should process DISTRIBUTE proposal after the state change", async function () {
     // Instantiate purchaseToken
     let PurchaseToken = await ethers.getContractFactory("Dai")
     let purchaseToken = await PurchaseToken.deploy()
@@ -1460,7 +1461,7 @@ describe("LandDAO", function () {
 
     await land.setState(1)
 
-    await land.propose(ProposalType["EXIT"], "TEST", [], [], [])
+    await land.propose(ProposalType["DISTRIBUTE"], "TEST", [], [], [])
 
     await land.vote(2, true)
     await land.connect(alice).vote(2, true)

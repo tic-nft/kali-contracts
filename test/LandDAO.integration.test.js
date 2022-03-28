@@ -34,10 +34,11 @@ const ProposalType = {
   'ESCAPE': 6, // delete pending proposal in case of revert
   'DOCS': 7, // amend org docs
   'CAPITALCALL': 8, // specific proposal to raise capital for expense
-  'SELL': 9, // call for manager to sell property
-  'PURCHASE': 10, // call to place funds in escrow for manager to use
-  'MANAGER': 11, // call to set a new manager for property
-  'EXIT': 12 // call to divide the spoils and exit the property typically when the property could not be purchased
+  'TOKENSALE': 9,
+  'SELL': 10, // call for manager to sell property
+  'PURCHASE': 11, // call to place funds in escrow for manager to use
+  'MANAGER': 12, // call to set a new manager for property
+  'DISTRIBUTE': 13 // call to divide the spoils and exit the property typically when the property could not be purchased
 }
 
 const numProposals = Object.keys(ProposalType).length

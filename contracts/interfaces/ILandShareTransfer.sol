@@ -14,4 +14,10 @@ interface ILandShareTransfer {
         uint32 _listingIndex,
         address _member
     ) external;
+
+    function fillBid(
+        address _member,
+        uint _listingIndex,
+        uint32 _numShares
+    ) external;
 }

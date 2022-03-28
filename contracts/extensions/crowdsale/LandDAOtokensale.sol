@@ -41,6 +41,8 @@ contract LandDAOtokensale is Multicall, ReentrancyGuard {
 
     error NotListingOwner();
 
+    error CannotPurchaseOwnShares();
+
     error NotComplete();
 
     error Distributed();
@@ -140,8 +142,8 @@ contract LandDAOtokensale is Multicall, ReentrancyGuard {
 
         if (bids[_listingIndex].actor != msg.sender) revert NotListingOwner();
         else {
-            dai._safeTransferFrom(address(this), msg.sender, bids[_listingIndex].numShares * bids[_listingIndex].pricePerShare);
             delete bids[_listingIndex];
+            dai._safeTransferFrom(address(this), msg.sender, bids[_listingIndex].numShares * bids[_listingIndex].pricePerShare);
         }
 
         emit RevokeBid(_listingIndex);
@@ -170,7 +172,7 @@ contract LandDAOtokensale is Multicall, ReentrancyGuard {
 
         if (forSale[_listingIndex].actor != _member) revert NotListingOwner();
         else {
-            IKaliShareManager(dao).transferShares(_member, forSale[_listingIndex].numShares, 0);
+            IKaliShareManager(dao).transferShares(_member, _member, forSale[_listingIndex].numShares, 0);
             delete forSale[_listingIndex];
         }
         
@@ -189,6 +191,7 @@ contract LandDAOtokensale is Multicall, ReentrancyGuard {
         // see if I can steal from bidder as the seller because I ask for too much
 
         ShareSale memory shares = forSale[_listingIndex];
+        if(shares.actor == msg.sender) revert CannotPurchaseOwnShares();
         if((block.timestamp < shares.timeStart + period) && (IKaliShareManager(dao).balanceOf(msg.sender) == 0)) revert MemberOnly();
         if(shares.numShares < _numShares) revert NotEnoughShares();
         
@@ -213,7 +216,7 @@ contract LandDAOtokensale is Multicall, ReentrancyGuard {
             delete forSale[_listingIndex];
         }
 
-        IKaliShareManager(dao).transferShares(msg.sender, _numShares, shares.pricePerShare);
+        IKaliShareManager(dao).transferShares(msg.sender, shares.actor, _numShares, shares.pricePerShare);
 
         emit PurchaseShares(msg.sender, shares.actor, _numShares, shares.pricePerShare);
     }
@@ -224,6 +227,7 @@ contract LandDAOtokensale is Multicall, ReentrancyGuard {
         uint32 _numShares
     ) public nonReentrant daoOnly {
         ShareSale memory shares = bids[_listingIndex];
+        if(shares.actor == _member) revert CannotPurchaseOwnShares();
 
         if(shares.numShares < _numShares) revert NotEnoughShares();
         uint256 value = _numShares * shares.pricePerShare;
@@ -235,7 +239,7 @@ contract LandDAOtokensale is Multicall, ReentrancyGuard {
             delete bids[_listingIndex];
         }
 
-        IKaliShareManager(dao).transferShares(shares.actor, _numShares, shares.pricePerShare);
+        IKaliShareManager(dao).transferShares(shares.actor, _member, _numShares, shares.pricePerShare);
         emit PurchaseShares(shares.actor, _member, _numShares, shares.pricePerShare);
     }
     // function withdraw(uint256 _reduceAmount) public nonReentrant {
