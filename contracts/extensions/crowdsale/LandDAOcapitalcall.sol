@@ -197,9 +197,11 @@ contract LandDAOcapitalcall is Multicall, ReentrancyGuard {
 
         uint shares;
         for (uint x = 0; x < members.length; x++){
-            shares = (100  * contributions[members[x]]) / pricePerShare;
+            shares = contributions[members[x]] / (pricePerShare * 10**16);  // DAI decimals of 18 with 100 multiplier to account for PPS calc from above
             IKaliShareManager(dao).mintShares(members[x], shares);
         }
+        if (totalFunds - totalNewFunds > 0)
+            IKaliShareManager(dao).unreserveLoot(totalFunds - totalNewFunds);
         
         distributed = true;
         emit ExtensionCalled(msg.sender, shares);

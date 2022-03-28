@@ -138,6 +138,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
     mapping(address => uint256) public balanceOf; /*maps `members` accounts to `shares` with erc20 accounting*/
     mapping(address => uint256) public lootBalanceOf; /*maps `members` accounts to `shares` with erc20 accounting*/
     uint256 public totalLoot; /*counter for total `loot` economic weight held by `members`*/
+    uint256 public reservedLoot; /*keeps track of loot that needs to be held in reserve for the Capital Call*/
     uint256 public totalSupply; /*counter for total `members` voting `shares` with erc20 accounting*/
     address[] public members; /* needed to iterate the member list */
 
@@ -595,7 +596,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
 
                 if (prop.proposalType == ProposalType.DISTRIBUTE){
                     uint funds = IDAIPermit(dai).balanceOf(address(this));
-                    if (funds > totalLoot){
+                    if (funds > totalLoot + reservedLoot){
                         _distributeLoot(funds - totalLoot);
                     }
                 }
@@ -803,7 +804,13 @@ contract LandDAO is Multicall, ReentrancyGuard {
         if (lootBalanceOf[msg.sender] < amount) revert InsufficientFunds();
 
         lootBalanceOf[msg.sender] -= amount;
+        reservedLoot += amount;
         IFundRaise(fundRaiseContract).contributeLoot(amount, msg.sender);
+    }
+
+    function unreserveLoot(uint amount) external onlyExtension nonReentrant{
+        totalLoot -= amount;
+        reservedLoot -= amount;
     }
 
     function listShares(uint32 _numShares, uint32 _pricePerShare) external memberOnly nonReentrant {
