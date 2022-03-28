@@ -179,7 +179,6 @@ describe("LandDAO", function () {
       Array(numProposals+1).fill(minVoteTime) // vote time
     ).should.be.reverted)
   })
-/*
   it("Should revert if initialization arrays don't match", async function () {
     expect(await land.init(
       "KALI",
@@ -456,193 +455,193 @@ describe("LandDAO", function () {
       [0x00, 0x00, 0x00]
     ).should.be.reverted)
   })
-  it("Should allow proposer to cancel unsponsored proposal", async function () {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      dai.address,
-      [], // addresses of extensions
-      [], // data for extensions
-      [0, 60], // ]quorum, supermajority
-      Array(numProposals).fill(1), // vote type
-      Array(numProposals).fill(minVoteTime) // vote time
-    )
-    await land.connect(alice).propose(
-      ProposalType['TYPE'],
-      "TEST",
-      [bob.address, alice.address],
-      [0, 1],
-      [0x00, 0x00]
-    )
-    await land.connect(alice).cancelProposal(1)
+  // it("Should allow proposer to cancel unsponsored proposal", async function () {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     dai.address,
+  //     [], // addresses of extensions
+  //     [], // data for extensions
+  //     [0, 60], // ]quorum, supermajority
+  //     Array(numProposals).fill(1), // vote type
+  //     Array(numProposals).fill(minVoteTime) // vote time
+  //   )
+  //   await land.connect(alice).propose(
+  //     ProposalType['TYPE'],
+  //     "TEST",
+  //     [bob.address, alice.address],
+  //     [0, 1],
+  //     [0x00, 0x00]
+  //   )
+  //   await land.connect(alice).cancelProposal(1)
 
-    //TODO: How do we know this proposal was actually cancelled?
-  })
-  it("Should forbid non-proposer from cancelling unsponsored proposal", async function () {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      dai.address,
-      [], // addresses of extensions
-      [], // data for extensions
-      [0, 60], // ]quorum, supermajority
-      Array(numProposals).fill(1), // vote type
-      Array(numProposals).fill(minVoteTime) // vote time
-    )
-    await land.connect(alice).propose(
-      ProposalType['TYPE'],
-      "TEST",
-      [bob.address, alice.address],
-      [0, 1],
-      [0x00, 0x00]
-    )
-    expect(await land.cancelProposal(0).should.be.reverted)
-  })
-  it("Should forbid proposer from cancelling sponsored proposal", async function () {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      dai.address,
-      [], // addresses of extensions
-      [], // data for extensions
-      [0, 60], // ]quorum, supermajority
-      Array(numProposals).fill(1), // vote type
-      Array(numProposals).fill(minVoteTime) // vote time
-    )
-    await land.connect(alice).propose(
-      ProposalType['TYPE'],
-      "TEST",
-      [bob.address, alice.address],
-      [0, 1],
-      [0x00, 0x00]
-    )
-    await land.sponsorProposal(1)
-    expect(await land.connect(alice).cancelProposal(1).should.be.reverted)
-  })
-  it("Should forbid cancelling non-existent proposal", async function () {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      dai.address,
-      [], // addresses of extensions
-      [], // data for extensions
-      [0, 60], // ]quorum, supermajority
-      Array(numProposals).fill(1), // vote type
-      Array(numProposals).fill(minVoteTime) // vote time
-    )
-    await land.connect(alice).propose(
-      ProposalType['TYPE'],
-      "TEST",
-      [bob.address, alice.address],
-      [0, 1],
-      [0x00, 0x00]
-    )
-    expect(await land.connect(alice).cancelProposal(10).should.be.reverted)
-  })
-  it("Should allow sponsoring proposal and processing", async function () {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      dai.address,
-      [], // addresses of extensions
-      [], // data for extensions
-      [0, 60], // quorum, supermajority
-      Array(numProposals).fill(1), // vote type
-      Array(numProposals).fill(minVoteTime) // vote time
-    )
-    expect(await land.proposalVoteTypes(0)).to.equal(1)
-    await land.connect(alice).propose(
-      ProposalType['TYPE'],
-      "TEST",
-      [bob.address, alice.address],
-      [0, 2],
-      [0x00, 0x00]
-    )
-    expect(await land.weights(1, proposer.address)).to.equal(5000)
-    await land.sponsorProposal(1)
-    await land.vote(1, true)
-    await advanceTime(minVoteTime + 1)
-    expect(await land.voted(1, proposer.address)).to.be.true
-    await land.processProposal(1)
-    //await expect(land.processProposal(1)).to.emit(land, "VoteEmitter").withArgs(1, 5000, 0)
-    // await expect(land.processProposal(1)).to.emit(land, "ProcessEmitter").withArgs(ProposalType['TYPE'], 0, 2, true)
-    expect(await land.proposalVoteTypes(0)).to.equal(2)
-  })
-  it("Should forbid non-member from sponsoring proposal", async function () {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      dai.address,
-      [], // addresses of extensions
-      [], // data for extensions
-      [0, 60], // quorum, supermajority
-      Array(numProposals).fill(1), // vote type
-      Array(numProposals).fill(minVoteTime) // vote time
-    )
-    await land.connect(alice).propose(
-      ProposalType['TYPE'],
-      "TEST",
-      [bob.address, alice.address],
-      [0, 2],
-      [0x00, 0x00]
-    )
-    expect(await land.connect(alice).sponsorProposal(1).should.be.reverted)
-  })
-  it("Should forbid sponsoring non-existent or processed proposal", async function () {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      dai.address,
-      [], // addresses of extensions
-      [], // data for extensions
-      [0, 60], // quorum, supermajority
-      Array(numProposals).fill(1), // vote type
-      Array(numProposals).fill(minVoteTime) // vote time
-    )
-    await land.connect(alice).propose(
-      ProposalType['TYPE'],
-      "TEST",
-      [bob.address, alice.address],
-      [0, 2],
-      [0x00, 0x00]
-    )
-    await land.sponsorProposal(1)
-    await land.vote(1, true)
-    await advanceTime(minVoteTime + 1)
-    await land.processProposal(1)
-    expect(await land.proposalVoteTypes(0)).to.equal(2)
-    expect(await land.sponsorProposal(1).should.be.reverted)
-    expect(await land.sponsorProposal(100).should.be.reverted)
-  })
-  it("Should forbid sponsoring an already sponsored proposal", async function () {
-    await land.init(
-      "KALI",
-      "KALI",
-      "DOCS",
-      dai.address,
-      [], // addresses of extensions
-      [], // data for extensions
-      [0, 60], // quorum, supermajority
-      Array(numProposals).fill(1), // vote type
-      Array(numProposals).fill(minVoteTime) // vote time
-    )
-    await land.connect(alice).propose(
-      ProposalType['TYPE'],
-      "TEST",
-      [bob.address, alice.address],
-      [0, 2],
-      [0x00, 0x00]
-    )
-    await land.sponsorProposal(1)
-    expect(await land.sponsorProposal(1).should.be.reverted)
-  })
+  //   //TODO: How do we know this proposal was actually cancelled?
+  // })
+  // it("Should forbid non-proposer from cancelling unsponsored proposal", async function () {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     dai.address,
+  //     [], // addresses of extensions
+  //     [], // data for extensions
+  //     [0, 60], // ]quorum, supermajority
+  //     Array(numProposals).fill(1), // vote type
+  //     Array(numProposals).fill(minVoteTime) // vote time
+  //   )
+  //   await land.connect(alice).propose(
+  //     ProposalType['TYPE'],
+  //     "TEST",
+  //     [bob.address, alice.address],
+  //     [0, 1],
+  //     [0x00, 0x00]
+  //   )
+  //   expect(await land.cancelProposal(0).should.be.reverted)
+  // })
+  // it("Should forbid proposer from cancelling sponsored proposal", async function () {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     dai.address,
+  //     [], // addresses of extensions
+  //     [], // data for extensions
+  //     [0, 60], // ]quorum, supermajority
+  //     Array(numProposals).fill(1), // vote type
+  //     Array(numProposals).fill(minVoteTime) // vote time
+  //   )
+  //   await land.connect(alice).propose(
+  //     ProposalType['TYPE'],
+  //     "TEST",
+  //     [bob.address, alice.address],
+  //     [0, 1],
+  //     [0x00, 0x00]
+  //   )
+  //   await land.sponsorProposal(1)
+  //   expect(await land.connect(alice).cancelProposal(1).should.be.reverted)
+  // })
+  // it("Should forbid cancelling non-existent proposal", async function () {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     dai.address,
+  //     [], // addresses of extensions
+  //     [], // data for extensions
+  //     [0, 60], // ]quorum, supermajority
+  //     Array(numProposals).fill(1), // vote type
+  //     Array(numProposals).fill(minVoteTime) // vote time
+  //   )
+  //   await land.connect(alice).propose(
+  //     ProposalType['TYPE'],
+  //     "TEST",
+  //     [bob.address, alice.address],
+  //     [0, 1],
+  //     [0x00, 0x00]
+  //   )
+  //   expect(await land.connect(alice).cancelProposal(10).should.be.reverted)
+  // })
+  // it("Should allow sponsoring proposal and processing", async function () {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     dai.address,
+  //     [], // addresses of extensions
+  //     [], // data for extensions
+  //     [0, 60], // quorum, supermajority
+  //     Array(numProposals).fill(1), // vote type
+  //     Array(numProposals).fill(minVoteTime) // vote time
+  //   )
+  //   expect(await land.proposalVoteTypes(0)).to.equal(1)
+  //   await land.connect(alice).propose(
+  //     ProposalType['TYPE'],
+  //     "TEST",
+  //     [bob.address, alice.address],
+  //     [0, 2],
+  //     [0x00, 0x00]
+  //   )
+  //   expect(await land.weights(1, proposer.address)).to.equal(5000)
+  //   await land.sponsorProposal(1)
+  //   await land.vote(1, true)
+  //   await advanceTime(minVoteTime + 1)
+  //   expect(await land.voted(1, proposer.address)).to.be.true
+  //   await land.processProposal(1)
+  //   //await expect(land.processProposal(1)).to.emit(land, "VoteEmitter").withArgs(1, 5000, 0)
+  //   // await expect(land.processProposal(1)).to.emit(land, "ProcessEmitter").withArgs(ProposalType['TYPE'], 0, 2, true)
+  //   expect(await land.proposalVoteTypes(0)).to.equal(2)
+  // })
+  // it("Should forbid non-member from sponsoring proposal", async function () {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     dai.address,
+  //     [], // addresses of extensions
+  //     [], // data for extensions
+  //     [0, 60], // quorum, supermajority
+  //     Array(numProposals).fill(1), // vote type
+  //     Array(numProposals).fill(minVoteTime) // vote time
+  //   )
+  //   await land.connect(alice).propose(
+  //     ProposalType['TYPE'],
+  //     "TEST",
+  //     [bob.address, alice.address],
+  //     [0, 2],
+  //     [0x00, 0x00]
+  //   )
+  //   expect(await land.connect(alice).sponsorProposal(1).should.be.reverted)
+  // })
+  // it("Should forbid sponsoring non-existent or processed proposal", async function () {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     dai.address,
+  //     [], // addresses of extensions
+  //     [], // data for extensions
+  //     [0, 60], // quorum, supermajority
+  //     Array(numProposals).fill(1), // vote type
+  //     Array(numProposals).fill(minVoteTime) // vote time
+  //   )
+  //   await land.connect(alice).propose(
+  //     ProposalType['TYPE'],
+  //     "TEST",
+  //     [bob.address, alice.address],
+  //     [0, 2],
+  //     [0x00, 0x00]
+  //   )
+  //   await land.sponsorProposal(1)
+  //   await land.vote(1, true)
+  //   await advanceTime(minVoteTime + 1)
+  //   await land.processProposal(1)
+  //   expect(await land.proposalVoteTypes(0)).to.equal(2)
+  //   expect(await land.sponsorProposal(1).should.be.reverted)
+  //   expect(await land.sponsorProposal(100).should.be.reverted)
+  // })
+  // it("Should forbid sponsoring an already sponsored proposal", async function () {
+  //   await land.init(
+  //     "KALI",
+  //     "KALI",
+  //     "DOCS",
+  //     dai.address,
+  //     [], // addresses of extensions
+  //     [], // data for extensions
+  //     [0, 60], // quorum, supermajority
+  //     Array(numProposals).fill(1), // vote type
+  //     Array(numProposals).fill(minVoteTime) // vote time
+  //   )
+  //   await land.connect(alice).propose(
+  //     ProposalType['TYPE'],
+  //     "TEST",
+  //     [bob.address, alice.address],
+  //     [0, 2],
+  //     [0x00, 0x00]
+  //   )
+  //   await land.sponsorProposal(1)
+  //   expect(await land.sponsorProposal(1).should.be.reverted)
+  // })
   it("Should allow self-sponsorship by a member", async function () {
     await land.init(
       "KALI",
@@ -1069,7 +1068,7 @@ describe("LandDAO", function () {
   //   )
   //   expect(await land.balanceOf(alice.address)).to.equal(getBigNumber(100))
   // }
-*/
+
   it("Should process extension proposal - LandDAOcrowdsale with DAI", async function () {
     // Instantiate purchaseToken
     let PurchaseToken = await ethers.getContractFactory("Dai")
@@ -1381,6 +1380,7 @@ describe("LandDAO", function () {
     // now we make sure it can be purchased
 
     expect(await land.lootBalanceOf(alice.address)).to.equal(getBigNumber(0))
+    expect(await land.balanceOf(alice.address)).to.equal(getBigNumber(95000, 0))
 
     await land.propose(ProposalType["EXIT"], "TEST", [], [], [])
 
@@ -1388,7 +1388,8 @@ describe("LandDAO", function () {
     await land.connect(alice).vote(2, true)
     await advanceTime(minVoteTime + 1)
     await land.processProposal(2)
-
+    expect(await purchaseToken.balanceOf(land.address)).to.equal(getBigNumber(100))
+    expect(await land.totalLoot()).to.equal(getBigNumber(100))
     expect(await land.lootBalanceOf(alice.address)).to.equal(getBigNumber(100))
     
   })
@@ -1499,6 +1500,170 @@ describe("LandDAO", function () {
   })
 
   // Test deposit dividend and withdraw
+  it("Deposit dividend before and after state change", async function () {
+    // Instantiate purchaseToken
+    let PurchaseToken = await ethers.getContractFactory("Dai")
+    let purchaseToken = await PurchaseToken.deploy()
+    await purchaseToken.deployed()
+    await purchaseToken.init(
+      [alice.address, proposer.address],
+      [getBigNumber(1000), getBigNumber(10000)]
+    )
+    
+    await land.init(
+      "KALI",
+      "KALI",
+      "DOCS",
+      purchaseToken.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
+    )
+
+    // Instantiate LandWhiteListManager
+    let LandWhitelistManager = await ethers.getContractFactory(
+      "KaliAccessManager"
+    )
+    let landWhitelistManager = await LandWhitelistManager.deploy()
+    await landWhitelistManager.deployed()
+    // Instantiate extension contract
+    let LandDAOcrowdsale = await ethers.getContractFactory("LandDAOcrowdsale")
+    let landDAOcrowdsale = await LandDAOcrowdsale.deploy(
+      landWhitelistManager.address,
+      wethAddress,
+      purchaseToken.address
+    )
+    await landDAOcrowdsale.deployed()
+    // Set up whitelist
+    await landWhitelistManager.createList(
+      [alice.address],
+      "0x074b43252ffb4a469154df5fb7fe4ecce30953ba8b7095fe1e006185f017ad10"
+    )
+    // Set up payload for extension proposal
+    let payload = ethers.utils.defaultAbiCoder.encode(
+      ["address", "uint96", "uint256"],
+      [purchaseToken.address, getBigNumber(1000), getBigNumber(100)]
+    )
+
+    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [1], [payload])
+    await land.vote(1, true)
+    await advanceTime(minVoteTime + 1)
+    await land.processProposal(1)
+
+    result = await signDaiPermit(ethers.provider, purchaseToken.address, alice.address, landDAOcrowdsale.address);
+
+    await landDAOcrowdsale
+      .connect(alice)
+      .contribute(getBigNumber(100), result.nonce, result.expiry, result.v, result.r, result.s)
+    
+    await landDAOcrowdsale.callExtension()
+
+    result = await signDaiPermit(ethers.provider, purchaseToken.address, proposer.address, land.address)
+
+    await land.depositDividend(getBigNumber(1000), result.nonce, result.expiry, result.v, result.r, result.s)
+    
+    expect(await land.lootBalanceOf(alice.address)).to.equal(getBigNumber(1000))
+    expect(await land.lootBalanceOf(proposer.address)).to.equal(getBigNumber(0))
+    expect(await land.totalLoot()).to.equal(getBigNumber(1000))
+    expect(await purchaseToken.balanceOf(land.address)).to.equal(getBigNumber(1100)) // because there is 100 non loot for purchasing
+
+    await land.setState(1)
+
+    result = await signDaiPermit(ethers.provider, purchaseToken.address, proposer.address, land.address)
+
+    await land.depositDividend(getBigNumber(1000), result.nonce, result.expiry, result.v, result.r, result.s)
+    
+    expect(await land.lootBalanceOf(alice.address)).to.equal(getBigNumber(1950))
+    expect(await land.lootBalanceOf(proposer.address)).to.equal(getBigNumber(50))
+    expect(await land.totalLoot()).to.equal(getBigNumber(2000))
+    expect(await purchaseToken.balanceOf(land.address)).to.equal(getBigNumber(2100)) // because there is 100 non loot for purchasing
+
+    result = await signDaiPermit(ethers.provider, purchaseToken.address, alice.address, land.address)
+    expect(await land.connect(alice).depositDividend(getBigNumber(10), result.nonce, result.expiry, result.v, result.r, result.s).should.be.reverted)
+  })
+
+  it("Should allow a user to withdraw their loot and fail when they withdraw too much", async function () {
+    // Instantiate purchaseToken
+    let PurchaseToken = await ethers.getContractFactory("Dai")
+    let purchaseToken = await PurchaseToken.deploy()
+    await purchaseToken.deployed()
+    await purchaseToken.init(
+      [alice.address, proposer.address],
+      [getBigNumber(1000), getBigNumber(10000)]
+    )
+    
+    await land.init(
+      "KALI",
+      "KALI",
+      "DOCS",
+      purchaseToken.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
+    )
+
+    // Instantiate LandWhiteListManager
+    let LandWhitelistManager = await ethers.getContractFactory(
+      "KaliAccessManager"
+    )
+    let landWhitelistManager = await LandWhitelistManager.deploy()
+    await landWhitelistManager.deployed()
+    // Instantiate extension contract
+    let LandDAOcrowdsale = await ethers.getContractFactory("LandDAOcrowdsale")
+    let landDAOcrowdsale = await LandDAOcrowdsale.deploy(
+      landWhitelistManager.address,
+      wethAddress,
+      purchaseToken.address
+    )
+    await landDAOcrowdsale.deployed()
+    // Set up whitelist
+    await landWhitelistManager.createList(
+      [alice.address],
+      "0x074b43252ffb4a469154df5fb7fe4ecce30953ba8b7095fe1e006185f017ad10"
+    )
+    // Set up payload for extension proposal
+    let payload = ethers.utils.defaultAbiCoder.encode(
+      ["address", "uint96", "uint256"],
+      [purchaseToken.address, getBigNumber(1000), getBigNumber(100)]
+    )
+
+    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [1], [payload])
+    await land.vote(1, true)
+    await advanceTime(minVoteTime + 1)
+    await land.processProposal(1)
+
+    result = await signDaiPermit(ethers.provider, purchaseToken.address, alice.address, landDAOcrowdsale.address);
+
+    await landDAOcrowdsale
+      .connect(alice)
+      .contribute(getBigNumber(100), result.nonce, result.expiry, result.v, result.r, result.s)
+    
+    await landDAOcrowdsale.callExtension()
+
+    result = await signDaiPermit(ethers.provider, purchaseToken.address, proposer.address, land.address)
+
+    await land.depositDividend(getBigNumber(1000), result.nonce, result.expiry, result.v, result.r, result.s)
+    
+    expect(await land.lootBalanceOf(alice.address)).to.equal(getBigNumber(1000))
+    expect(await land.lootBalanceOf(proposer.address)).to.equal(getBigNumber(0))
+    expect(await purchaseToken.balanceOf(alice.address)).to.equal(getBigNumber(900))
+
+    // withdraw too much
+    expect(await land.connect(alice).withdraw(getBigNumber(1001)).should.be.reverted)
+
+    await land.connect(alice).withdraw(getBigNumber(150))
+
+    expect(await land.lootBalanceOf(alice.address)).to.equal(getBigNumber(850))
+    expect(await land.lootBalanceOf(proposer.address)).to.equal(getBigNumber(0))
+    expect(await purchaseToken.balanceOf(alice.address)).to.equal(getBigNumber(1050))
+    expect(await land.totalLoot()).to.equal(getBigNumber(850))
+    expect(await purchaseToken.balanceOf(land.address)).to.equal(getBigNumber(950)) // 950 because there is 100 ready for purchasing
+  })
+
 
 
   it("Should forbid processing a non-existent proposal", async function () {

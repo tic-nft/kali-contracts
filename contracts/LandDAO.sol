@@ -7,6 +7,7 @@ import './utils/Multicall.sol';
 // import './utils/NFThelper.sol';
 import './utils/ReentrancyGuard.sol';
 import './interfaces/IKaliDAOextension.sol';
+import './interfaces/ILandShareTransfer.sol';
 //import './interfaces/IERC20Permit.sol';
 import './interfaces/IDAIPermit.sol';
 import './interfaces/IFundRaise.sol';
@@ -87,6 +88,8 @@ contract LandDAO is Multicall, ReentrancyGuard {
 
     error InsufficientFunds();
 
+    error NotEnoughShares();
+
     /* FROM KaliDAOToken */
     error NoArrayParity();
 
@@ -126,7 +129,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
     address public manager;  // user that gets funds for real world activity
     address public notary;  // lawyer that ensures proper release of funds to manager
     
-    uint8 public constant decimals = 18; /*unit scaling factor in erc20 `shares` accounting - '18' is default to match ETH & common erc20s*/
+    uint8 public constant decimals = 0; /*unit scaling factor in erc20 `shares` accounting - '18' is default to match ETH & common erc20s*/
     string public name; /*'name' for erc20 `shares` accounting*/
     string public symbol; /*'symbol' for erc20 `shares` accounting*/
 
@@ -137,10 +140,11 @@ contract LandDAO is Multicall, ReentrancyGuard {
     address[] public members; /* needed to iterate the member list */
 
     address public dai;
+    address public transferContract;
 
     // uint96 public daoValue; /* Used for capital calls to ensure fairness in minting new shares */
 
-    uint96 public propertyValue; /*the value of the property that is used to assess capital call raises*/
+    uint public propertyValue; /*the value of the property that is used to assess capital call raises*/
 
     mapping(address => bool) public extensions;
 
@@ -221,6 +225,14 @@ contract LandDAO is Multicall, ReentrancyGuard {
         _;
     }
 
+    /**
+     * @dev Throws if called by any account that is not a member.
+     */
+    modifier memberOnly() {
+        require(balanceOf[msg.sender] != 0, "Member: caller is not a member");
+        _;
+    }
+
     /*///////////////////////////////////////////////////////////////
                             CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
@@ -272,6 +284,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
 
         // manager = owner();
         _mint(manager, 5000);
+        totalSupply += 5000; // have to do this one off
         // for (uint x = 0; x < voters_.length; x++){
         //     _mint(voters_[x], shares_[x]);
         // }
@@ -325,7 +338,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
         address[] calldata accounts,
         uint256[] calldata amounts,
         bytes[] calldata payloads
-    ) public payable nonReentrant virtual returns (uint256 proposal) {
+    ) public payable memberOnly nonReentrant virtual returns (uint256 proposal) {
         if (accounts.length != amounts.length || amounts.length != payloads.length) revert NoArrayParity();
         
         if (proposalType == ProposalType.VPERIOD) if (amounts[1] < 12 hours || amounts[1] > 30 days) revert PeriodBounds();
@@ -378,35 +391,35 @@ contract LandDAO is Multicall, ReentrancyGuard {
         emit NewProposal(msg.sender, proposal, proposalType, description, accounts, amounts, payloads);
     }
 
-    function cancelProposal(uint256 proposal) public payable nonReentrant virtual {
-        Proposal storage prop = proposals[proposal];
+    // function cancelProposal(uint256 proposal) public payable nonReentrant virtual {
+    //     Proposal storage prop = proposals[proposal];
 
-        if (msg.sender != prop.proposer) revert NotProposer();
+    //     if (msg.sender != prop.proposer) revert NotProposer();
 
-        if (prop.creationTime != 0) revert Sponsored();
+    //     if (prop.creationTime != 0) revert Sponsored();
 
-        delete proposals[proposal];
+    //     delete proposals[proposal];
 
-        emit ProposalCancelled(msg.sender, proposal);
-    }
+    //     emit ProposalCancelled(msg.sender, proposal);
+    // }
 
-    function sponsorProposal(uint256 proposal) public payable nonReentrant virtual {
-        Proposal storage prop = proposals[proposal];
+    // function sponsorProposal(uint256 proposal) public payable nonReentrant virtual {
+    //     Proposal storage prop = proposals[proposal];
 
-        if (balanceOf[msg.sender] == 0) revert NotMember();
+    //     if (balanceOf[msg.sender] == 0) revert NotMember();
 
-        if (prop.proposer == address(0)) revert NotCurrentProposal();
+    //     if (prop.proposer == address(0)) revert NotCurrentProposal();
 
-        if (prop.creationTime != 0) revert Sponsored();
+    //     if (prop.creationTime != 0) revert Sponsored();
 
-        prop.prevProposal = currentSponsoredProposal;
+    //     prop.prevProposal = currentSponsoredProposal;
 
-        currentSponsoredProposal = proposal;
+    //     currentSponsoredProposal = proposal;
 
-        prop.creationTime = _safeCastTo32(block.timestamp);
+    //     prop.creationTime = _safeCastTo32(block.timestamp);
 
-        emit ProposalSponsored(msg.sender, proposal);
-    } 
+    //     emit ProposalSponsored(msg.sender, proposal);
+    // } 
 
     function vote(uint256 proposal, bool approve) public payable nonReentrant virtual {
         _vote(msg.sender, proposal, approve);
@@ -655,12 +668,11 @@ contract LandDAO is Multicall, ReentrancyGuard {
     // }
 
     function mintShares(address to, uint256 amount) public payable onlyExtension virtual {
+        totalSupply += amount;
         _mint(to, amount);
     }
 
     function _mint(address to, uint256 amount) internal virtual {
-        totalSupply += amount;
-
         if (balanceOf[to] == 0){
             members.push(to);
         }
@@ -672,6 +684,39 @@ contract LandDAO is Multicall, ReentrancyGuard {
         }
 
         emit Transfer(address(0), to, amount);
+    }
+
+    function tranferShares(address to, uint32 amount, uint32 pricePerShare) public onlyExtension virtual {
+        _mint(to, amount);
+        if (pricePerShare > 0)
+            _adjustPropertyValue(amount, pricePerShare);
+    }
+
+    function _adjustPropertyValue(uint32 amount, uint32 pricePerShare) internal virtual {
+        uint newValue = pricePerShare * totalSupply;
+
+        bool isPos;
+        if (newValue > propertyValue){
+            isPos = true;
+        }
+
+        uint difference;
+        if (isPos){
+            difference = newValue - propertyValue;
+        }
+        else {
+            difference = propertyValue - newValue;
+        }
+        uint calcDifference = totalSupply * difference / (30 * amount);
+        if (difference > calcDifference){
+            difference = calcDifference;
+        }
+        if (isPos){
+            propertyValue += difference;
+        }
+        else {
+            propertyValue -= difference;
+        }
     }
 
     // function burnShares(address from, uint256 amount) public payable onlyExtension virtual {
@@ -733,11 +778,32 @@ contract LandDAO is Multicall, ReentrancyGuard {
         dai._safeTransferFrom(address(this), msg.sender, amount);
     }
 
-    function contributeLoot(uint256 amount, address fundRaiseContract) external nonReentrant{
+    function contributeLoot(uint256 amount, address fundRaiseContract) external memberOnly nonReentrant{
         if (lootBalanceOf[msg.sender] < amount) revert InsufficientFunds();
 
         lootBalanceOf[msg.sender] -= amount;
-        IFundRaise(fundRaiseContract).contributeLoot(amount);
+        IFundRaise(fundRaiseContract).contributeLoot(amount, msg.sender);
+    }
+
+    function listShares(uint32 _numShares, uint32 _pricePerShare) external memberOnly nonReentrant {
+        if (balanceOf[msg.sender] < _numShares) revert NotEnoughShares();
+        
+        balanceOf[msg.sender] -= _numShares;
+
+        if (balanceOf[msg.sender] == 0){
+            for (uint i = 0; i < members.length; i++){
+                if (msg.sender == members[i]){
+                    members[i] = members[members.length - 1];
+                    members.pop();
+                    break;
+                }
+            }
+        }
+        ILandShareTransfer(transferContract).listShares(_pricePerShare, _numShares, msg.sender);
+    }
+
+    function revokeListing(uint32 _listingIndex) external nonReentrant {
+        ILandShareTransfer(transferContract).revokeListing(_listingIndex, msg.sender);
     }
 
     function _safeCastTo32(uint256 x) internal pure virtual returns (uint32) {
