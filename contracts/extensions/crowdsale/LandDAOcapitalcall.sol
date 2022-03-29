@@ -166,28 +166,6 @@ contract LandDAOcapitalcall is Multicall, ReentrancyGuard {
         }
     }
 
-    // function withdraw(uint256 _reduceAmount) public nonReentrant {
-    //     if(_reduceAmount <= 0 || _reduceAmount > contributions[msg.sender]) revert BadValue();
-    //     if(complete) revert SaleEnded();
-
-    //     contributions[msg.sender] -= _reduceAmount;
-    //     totalFunds -= _reduceAmount;
-
-    //     dai._safeTransferFrom(address(this), msg.sender, _reduceAmount);
-
-    //     if (contributions[msg.sender] <= 0){
-    //         for (uint i = 0; i < members.length; i++){
-    //             if (msg.sender == members[i]){
-    //                 members[i] = members[members.length - 1];
-    //                 members.pop();
-    //                 break;
-    //             }
-    //         }
-    //     }
-
-    //     emit FundsWithdrawn(msg.sender, _reduceAmount);
-    // }
-
     function callExtension() public nonReentrant virtual {
 
         if(!complete) revert NotComplete();
