@@ -143,7 +143,9 @@ contract LandDAO is Multicall, ReentrancyGuard {
     address[] public members; /* needed to iterate the member list */
 
     address public dai;
-    address public transferContract;
+    address public tokenSale;
+    address public crowdFund;
+    address public capitalCall;
 
     // uint96 public daoValue; /* Used for capital calls to ensure fairness in minting new shares */
 
@@ -188,15 +190,13 @@ contract LandDAO is Multicall, ReentrancyGuard {
         EXTENSION, // flip `extensions` whitelisting
         ESCAPE, // delete pending proposal in case of revert
         DOCS, // amend org docs
-        CAPITALCALL, // specific proposal to raise capital for expense
-        TOKENSALE, // extension to change the location of the tokenSale address
         SELL, // call for manager to sell property
         PURCHASE, // call to place funds in escrow for manager to use
         MANAGER, // call to set a new manager for property
         DISTRIBUTE // destroy all shares and return money
     }
 
-    uint16 internal constant TYPE_COUNT = 14;
+    uint16 internal constant TYPE_COUNT = 12;
 
     enum VoteType {
         SIMPLE_MAJORITY,
@@ -565,14 +565,20 @@ contract LandDAO is Multicall, ReentrancyGuard {
                 // if (prop.proposalType == ProposalType.PAUSE) 
                 //     _flipPause();
                 
-                if (prop.proposalType == ProposalType.EXTENSION) 
+                if (prop.proposalType == ProposalType.EXTENSION) {
                     for (uint256 i; i < prop.accounts.length; i++) {
-                        if (prop.amounts[i] != 0) 
+                        if (prop.amounts[i] == 1) 
                             extensions[prop.accounts[i]] = !extensions[prop.accounts[i]];
-                    
+                        if (prop.amounts[i] == 2)
+                            crowdFund = prop.accounts[i];
+                        if (prop.amounts[i] == 3)
+                            capitalCall = prop.accounts[i];
+                        if (prop.amounts[i] == 4)
+                            tokenSale = prop.accounts[i];
                         if (prop.payloads[i].length > 3) IKaliDAOextension(prop.accounts[i])
                             .setExtension(prop.payloads[i]);
                     }
+                }
                 
                 if (prop.proposalType == ProposalType.ESCAPE)
                     delete proposals[prop.amounts[0]];
@@ -820,17 +826,17 @@ contract LandDAO is Multicall, ReentrancyGuard {
         //balanceOf[msg.sender] -= _numShares;
         listedShares[msg.sender] += _numShares;
 
-        ILandShareTransfer(transferContract).listShares(_pricePerShare, _numShares, msg.sender);
+        ILandShareTransfer(tokenSale).listShares(_pricePerShare, _numShares, msg.sender);
     }
 
     function revokeListing(uint32 _listingIndex) external memberOnly nonReentrant {
-        ILandShareTransfer(transferContract).revokeListing(_listingIndex, msg.sender);
+        ILandShareTransfer(tokenSale).revokeListing(_listingIndex, msg.sender);
     }
 
     function fillBid(uint _listingIndex, uint32 _numShares) external memberOnly nonReentrant {
         if (balanceOf[msg.sender] - listedShares[msg.sender] < _numShares) revert NotEnoughShares();
         listedShares[msg.sender] += _numShares;
-        ILandShareTransfer(transferContract).fillBid(msg.sender, _listingIndex, _numShares);
+        ILandShareTransfer(tokenSale).fillBid(msg.sender, _listingIndex, _numShares);
     }
 
     function _safeCastTo32(uint256 x) internal pure virtual returns (uint32) {

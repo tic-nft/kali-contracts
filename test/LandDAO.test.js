@@ -30,15 +30,13 @@ const ProposalType = {
   'SUPERMAJORITY': 3, // set `supermajority`
   'TYPE': 4, // set `VoteType` to `ProposalType`
   // 'PAUSE': 5, // flip membership transferability
-  'EXTENSION': 5, // flip `extensions` whitelisting
+  'EXTENSION': 5, // flip `extensions` whitelisting set amount to 1-toggle, 2-crowdfund, 3-capitalcall, 4-tokensale
   'ESCAPE': 6, // delete pending proposal in case of revert
   'DOCS': 7, // amend org docs
-  'CAPITALCALL': 8, // specific proposal to raise capital for expense
-  'TOKENSALE': 9,
-  'SELL': 10, // call for manager to sell property
-  'PURCHASE': 11, // call to place funds in escrow for manager to use
-  'MANAGER': 12, // call to set a new manager for property
-  'DISTRIBUTE': 13 // call to divide the spoils and exit the property typically when the property could not be purchased
+  'SELL': 8, // call for manager to sell property
+  'PURCHASE': 9, // call to place funds in escrow for manager to use
+  'MANAGER': 10, // call to set a new manager for property
+  'DISTRIBUTE': 11 // call to divide the spoils and exit the property typically when the property could not be purchased
 }
 
 const numProposals = Object.keys(ProposalType).length
@@ -1012,6 +1010,47 @@ describe("LandDAO", function () {
     await land.processProposal(1)
     expect(await land.extensions(wethAddress)).to.equal(true)
   })
+  it("Should create capital call extension", async function () {
+    await land.init(
+      "KALI",
+      "KALI",
+      "DOCS",
+      dai.address,
+      [], // addresses of extensions
+      [], // data for extensions
+      [0, 60], // quorum, supermajority
+      Array(numProposals).fill(1), // vote type
+      Array(numProposals).fill(minVoteTime) // vote time
+    )
+
+    let LandWhitelistManager = await ethers.getContractFactory(
+      "KaliAccessManager"
+    )
+    let landWhitelistManager = await LandWhitelistManager.deploy()
+    await landWhitelistManager.deployed()
+    // Instantiate extension contract
+    let CapCall = await ethers.getContractFactory("LandDAOcapitalcall")
+    let capCall = await CapCall.deploy(
+      landWhitelistManager.address,
+      wethAddress,
+      dai.address
+    )
+    await capCall.deployed()
+
+    (address[] memory _members, uint256[] memory _memberShare, uint256 _goal, uint256 _period, uint256 _daoValue, uint256 _numShares) 
+            = abi.decode(extensionData, (address[], uint256[], uint256, uint256, uint256, uint256));
+
+    let payload = ethers.utils.defaultAbiCoder.encode(
+      ["address", "uint96", "uint256"],
+      [purchaseToken.address, getBigNumber(1000), getBigNumber(100)]
+    )
+
+    await land.propose(ProposalType["EXTENSION"], "TEST", [wethAddress], [3], [payload])
+    await land.vote(1, true)
+    await advanceTime(minVoteTime + 1)
+    await land.processProposal(1)
+    expect(await land.extensions(wethAddress)).to.equal(true)
+  })
   // it("Should process extension proposal - LandDAOcrowdsale with ETH", async function () {
   //   // Instantiate LandDAO
   //   await land.init(
@@ -1055,7 +1094,7 @@ describe("LandDAO", function () {
   //       "DOCS"
   //     ]
   //   )
-  //   await land.propose(9, "TEST", [landDAOcrowdsale.address], [1], [payload])
+  //   await land.propose(9, "TEST", [landDAOcrowdsale.address], [2], [payload])
   //   await land.vote(1, true)
   //   await advanceTime(35)
   //   await land.processProposal(1)
@@ -1121,7 +1160,7 @@ describe("LandDAO", function () {
     expect(await landDAOcrowdsale.purchaseLimit()).to.equal(getBigNumber(0))
     expect(await landDAOcrowdsale.totalFunds()).to.equal(getBigNumber(0))
     
-    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [1], [payload])
+    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [2], [payload])
     await land.vote(1, true)
     await advanceTime(minVoteTime + 1)
     await land.processProposal(1)
@@ -1287,7 +1326,7 @@ describe("LandDAO", function () {
       [purchaseToken.address, getBigNumber(1000), getBigNumber(100)]
     )
 
-    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [1], [payload])
+    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address],[2], [payload])
     await land.vote(1, true)
     await advanceTime(minVoteTime + 1)
     await land.processProposal(1)
@@ -1365,7 +1404,7 @@ describe("LandDAO", function () {
       [purchaseToken.address, getBigNumber(1000), getBigNumber(100)]
     )
 
-    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [1], [payload])
+    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [2], [payload])
     await land.vote(1, true)
     await advanceTime(minVoteTime + 1)
     await land.processProposal(1)
@@ -1442,7 +1481,7 @@ describe("LandDAO", function () {
       [purchaseToken.address, getBigNumber(1000), getBigNumber(100)]
     )
 
-    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [1], [payload])
+    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [2], [payload])
     await land.vote(1, true)
     await advanceTime(minVoteTime + 1)
     await land.processProposal(1)
@@ -1548,7 +1587,7 @@ describe("LandDAO", function () {
       [purchaseToken.address, getBigNumber(1000), getBigNumber(100)]
     )
 
-    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [1], [payload])
+    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [2], [payload])
     await land.vote(1, true)
     await advanceTime(minVoteTime + 1)
     await land.processProposal(1)
@@ -1632,7 +1671,7 @@ describe("LandDAO", function () {
       [purchaseToken.address, getBigNumber(1000), getBigNumber(100)]
     )
 
-    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [1], [payload])
+    await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [2], [payload])
     await land.vote(1, true)
     await advanceTime(minVoteTime + 1)
     await land.processProposal(1)
