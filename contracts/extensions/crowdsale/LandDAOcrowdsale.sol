@@ -27,15 +27,9 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
 
     event FundsWithdrawn(address user, uint256 withdraw);
     
-    // error NullMultiplier();
-
     error SaleEnded();
 
     error BadValue();
-
-    // error NotListed();
-
-    error PurchaseLimit();
 
     error NotComplete();
 
@@ -57,15 +51,6 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
     bool public complete;
     bool public distributed;
 
-    // struct Crowdsale {
-    //     uint256 listId;
-    //     address purchaseToken;
-    //     uint8 purchaseMultiplier;
-    //     uint96 purchaseLimit;
-    //     uint96 amountPurchased;
-    //     uint32 saleEnds;
-    //     string details;
-    // }
 
     constructor(IKaliAccessManager accessManager_, address wETH_, address dai_) {
         accessManager = accessManager_;

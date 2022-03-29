@@ -19,8 +19,6 @@ contract LandDAOtokensale is Multicall, ReentrancyGuard {
         uint256 period
     );
 
-    event ExtensionCalled(address indexed members, uint256 shares);
-
     event ListShares(address actor, uint32 numShares, uint32 pricePerShare, uint256 arrayIndex);
     event BidShares(address actor, uint32 numShares, uint32 pricePerShare, uint256 arrayIndex);
 
@@ -29,29 +27,15 @@ contract LandDAOtokensale is Multicall, ReentrancyGuard {
     event RevokeListing(uint listingIndex);
     event RevokeBid(uint listingIndex);
 
-    event FundsWithdrawn(address user, uint256 withdraw);
-    
-    // error NullMultiplier();
-
-    error SaleEnded();
-
-    error BadValue();
-
-    // error NotListed();
-
     error NotListingOwner();
 
     error CannotPurchaseOwnShares();
 
     error NotComplete();
 
-    error Distributed();
-
     error NotEnoughShares();
 
     error MemberOnly();
-
-    error NoArrayParity();
     
     IKaliAccessManager private immutable accessManager;
 
@@ -242,27 +226,6 @@ contract LandDAOtokensale is Multicall, ReentrancyGuard {
         IKaliShareManager(dao).transferShares(shares.actor, _member, _numShares, shares.pricePerShare);
         emit PurchaseShares(shares.actor, _member, _numShares, shares.pricePerShare);
     }
-    // function withdraw(uint256 _reduceAmount) public nonReentrant {
-    //     if(_reduceAmount <= 0 || _reduceAmount > contributions[msg.sender]) revert BadValue();
-    //     if(complete) revert SaleEnded();
-
-    //     contributions[msg.sender] -= _reduceAmount;
-    //     totalFunds -= _reduceAmount;
-
-    //     dai._safeTransferFrom(address(this), msg.sender, _reduceAmount);
-
-    //     if (contributions[msg.sender] <= 0){
-    //         for (uint i = 0; i < members.length; i++){
-    //             if (msg.sender == members[i]){
-    //                 members[i] = members[members.length - 1];
-    //                 members.pop();
-    //                 break;
-    //             }
-    //         }
-    //     }
-
-    //     emit FundsWithdrawn(msg.sender, _reduceAmount);
-    // }
 
     function callExtension() public nonReentrant virtual {
 

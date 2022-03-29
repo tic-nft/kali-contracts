@@ -37,18 +37,10 @@ contract LandDAO is Multicall, ReentrancyGuard {
     event DividendDeposit(uint256 amount);
 
     event Withdraw(address member, uint256 amount);
-
-    event ProposalCancelled(address indexed proposer, uint256 indexed proposal);
-
-    event ProposalSponsored(address indexed sponsor, uint256 indexed proposal);
     
     event VoteCast(address indexed voter, uint256 indexed proposal, bool indexed approve);
 
     event ProposalProcessed(uint256 indexed proposal, bool indexed didProposalPass);
-
-    event ProcessEmitter(ProposalType proptype, uint setting1, uint setting2, bool didPass);
-
-    event VoteEmitter(VoteType votetype, uint yes, uint no);
 
     /*///////////////////////////////////////////////////////////////
                             ERRORS
@@ -65,12 +57,6 @@ contract LandDAO is Multicall, ReentrancyGuard {
     error InitCallFail();
 
     error TypeBounds();
-
-    error NotProposer();
-
-    error Sponsored();
-
-    error NotMember();
 
     error NotCurrentProposal();
 
@@ -263,15 +249,12 @@ contract LandDAO is Multicall, ReentrancyGuard {
     ) public payable nonReentrant virtual {
         if (extensions_.length != extensionsData_.length) revert NoArrayParity();
 
-        // if (voters_.length != shares_.length) revert NoArrayParity();
-
         if (supermajority != 0) revert Initialized();
 
         for (uint i = 0; i < votePeriods_.length; i++){
             if (votePeriods_[i] < 12 hours || votePeriods_[i] > 30 days) revert PeriodBounds();
         }
 
-        // if (govSettings_[1] > 365 days) revert PeriodBounds();
 
         if (govSettings_[0] > 100) revert QuorumMax();
 
@@ -350,8 +333,6 @@ contract LandDAO is Multicall, ReentrancyGuard {
         if (proposalType == ProposalType.VPERIOD) if (amounts[1] < 12 hours || amounts[1] > 30 days) revert PeriodBounds();
 
         if (proposalType == ProposalType.VPERIOD) if (amounts[0] > TYPE_COUNT-1 || amounts.length != 2) revert PeriodBounds();
-
-        //if (proposalType == ProposalType.GPERIOD) if (amounts[0] > 365 days) revert PeriodBounds();
         
         if (proposalType == ProposalType.QUORUM) if (amounts[0] > 100) revert QuorumMax();
         
@@ -522,7 +503,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
         didProposalPass = _countVotes(voteType, prop.yesVotes, prop.noVotes);
 
         //emit ProcessEmitter(prop.proposalType, prop.amounts[0], prop.amounts[1], didProposalPass);
-        emit VoteEmitter(voteType, prop.yesVotes, prop.noVotes);
+        //emit VoteEmitter(voteType, prop.yesVotes, prop.noVotes);
         if (didProposalPass) {
             // cannot realistically overflow on human timescales
             unchecked {
@@ -771,6 +752,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
         );
         dai._safeTransferFrom(msg.sender, address(this), value);
         _distributeLoot(value);
+        emit DividendDeposit(value);
     }
 
     function setState(DaoState newState) external onlyManager nonReentrant {
@@ -798,6 +780,8 @@ contract LandDAO is Multicall, ReentrancyGuard {
         lootBalanceOf[msg.sender] -= amount;
         totalLoot -= amount;
         dai._safeTransferFrom(address(this), msg.sender, amount);
+
+        emit Withdraw(msg.sender, amount);
     }
 
     function contributeLoot(uint256 amount, address fundRaiseContract) external memberOnly nonReentrant{
