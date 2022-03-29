@@ -21,7 +21,7 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
         uint256 goal
     );
 
-    event ExtensionCalled(address indexed members, uint256 shares);
+    event ExtensionCalled(address[] members, uint256[] shares);
 
     event FundsContributed(address user, uint256 contribution);
 
@@ -156,13 +156,13 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
 
         dai._safeTransferFrom(address(this), dao, totalFunds);
 
-        uint shares;
+        uint[] memory shares;
         for (uint x = 0; x < members.length; x++){
-            shares = (95000 * contributions[members[x]]) / goal;
-            IKaliShareManager(dao).mintShares(members[x], shares);
+            shares[x] = (95000 * contributions[members[x]]) / goal;
+            IKaliShareManager(dao).mintShares(members[x], shares[x]);
         }
         
         distributed = true;
-        emit ExtensionCalled(msg.sender, shares);
+        emit ExtensionCalled(members, shares);
     }
 }

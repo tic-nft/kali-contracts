@@ -16,14 +16,17 @@ contract LandDAOcapitalcall is Multicall, ReentrancyGuard {
 
     event ExtensionSet(
         address indexed dao, 
-        uint256 goal
+        uint256 goal,
+        address[] members,
+        uint[] memberShare,
+        uint period,
+        uint daoValue,
+        uint numShares
     );
 
-    event ExtensionCalled(address indexed members, uint256 shares);
+    event ExtensionCalled(address[] caller, uint256[] shares);
 
     event FundsContributed(address user, uint256 contribution);
-
-    event FundsWithdrawn(address user, uint256 withdraw);
     
     // error NullMultiplier();
 
@@ -91,7 +94,7 @@ contract LandDAOcapitalcall is Multicall, ReentrancyGuard {
         startTime = block.timestamp;
         pricePerShare = (_daoValue * 100) / _numShares;
 
-        emit ExtensionSet(msg.sender, goal);
+        emit ExtensionSet(msg.sender, goal, _members, _memberShare, _period, _daoValue, _numShares);
     }
 
     function joinList(uint256 listId, bytes32[] calldata merkleProof) public virtual {
@@ -173,15 +176,15 @@ contract LandDAOcapitalcall is Multicall, ReentrancyGuard {
 
         dai._safeTransferFrom(address(this), dao, totalNewFunds);
 
-        uint shares;
+        uint[] memory shares;
         for (uint x = 0; x < members.length; x++){
-            shares = contributions[members[x]] / (pricePerShare * 10**16);  // DAI decimals of 18 with 100 multiplier to account for PPS calc from above
-            IKaliShareManager(dao).mintShares(members[x], shares);
+            shares[x] = contributions[members[x]] / (pricePerShare * 10**16);  // DAI decimals of 18 with 100 multiplier to account for PPS calc from above
+            IKaliShareManager(dao).mintShares(members[x], shares[x]);
         }
         if (totalFunds - totalNewFunds > 0)
             IKaliShareManager(dao).unreserveLoot(totalFunds - totalNewFunds);
         
         distributed = true;
-        emit ExtensionCalled(msg.sender, shares);
+        emit ExtensionCalled(members, shares);
     }
 }
