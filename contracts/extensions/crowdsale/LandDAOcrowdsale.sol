@@ -23,7 +23,7 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
 
     event ExtensionCalled(address indexed members, uint256 shares);
 
-    event FundsContributed(address user, uint256 contribution);
+    event FundsContributed(address user, uint256 contribution, bool isFunded);
 
     event FundsWithdrawn(address user, uint256 withdraw);
     
@@ -119,12 +119,11 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
         }
         
         contributions[msg.sender] += singleContribution;
-
-        emit FundsContributed(msg.sender, singleContribution);
         
         if (totalFunds >= goal){
             complete = true;
         }
+        emit FundsContributed(msg.sender, singleContribution, complete);
     }
 
     function withdraw(uint256 _reduceAmount) public nonReentrant {
