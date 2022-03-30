@@ -22,7 +22,7 @@ contract LandDAOtokensale is Multicall, ReentrancyGuard {
     event ListShares(address actor, uint32 numShares, uint32 pricePerShare, uint256 arrayIndex);
     event BidShares(address actor, uint32 numShares, uint32 pricePerShare, uint256 arrayIndex);
 
-    event PurchaseShares(address buyer, address seller, uint32 numShares, uint32 pricePerShare);
+    event PurchaseShares(address buyer, address seller, uint32 numShares, bool fromBid, uint arrayIndex);
 
     event RevokeListing(uint listingIndex);
     event RevokeBid(uint listingIndex);
@@ -202,7 +202,7 @@ contract LandDAOtokensale is Multicall, ReentrancyGuard {
 
         IKaliShareManager(dao).transferShares(msg.sender, shares.actor, _numShares, shares.pricePerShare);
 
-        emit PurchaseShares(msg.sender, shares.actor, _numShares, shares.pricePerShare);
+        emit PurchaseShares(msg.sender, shares.actor, _numShares, false, _listingIndex);
     }
 
     function fillBid(
@@ -224,7 +224,7 @@ contract LandDAOtokensale is Multicall, ReentrancyGuard {
         }
 
         IKaliShareManager(dao).transferShares(shares.actor, _member, _numShares, shares.pricePerShare);
-        emit PurchaseShares(shares.actor, _member, _numShares, shares.pricePerShare);
+        emit PurchaseShares(shares.actor, _member, _numShares, true, _listingIndex);
     }
 
     function callExtension() public nonReentrant virtual {
