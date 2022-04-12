@@ -6,6 +6,7 @@ pragma solidity >=0.8.4;
 interface IKaliShareManager {
     function mintShares(address to, uint256 amount) external;
     function transferShares(address to, address from, uint256 amount, uint256 pricePerShare) external;
+    function initPropertyValue(uint256 value) external;
 
     function unreserveLoot(uint) external;
 

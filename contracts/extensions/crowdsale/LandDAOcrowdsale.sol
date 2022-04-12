@@ -17,7 +17,7 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
     event ExtensionSet(
         address indexed dao, 
         address purchaseToken, 
-        uint96 purchaseLimit, 
+        uint96 purchaseMinimum, 
         uint256 goal
     );
 
@@ -37,7 +37,7 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
     
     IKaliAccessManager private immutable accessManager;
 
-    address private immutable wETH;
+    // address private immutable wETH;
 
     address public immutable dai;
 
@@ -47,28 +47,28 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
     mapping(address => uint) public contributions;
     address[] public members;
     address public fundingERC20;
-    uint96 public purchaseLimit;
+    uint96 public purchaseMinimum;
     bool public complete;
     bool public distributed;
 
 
-    constructor(IKaliAccessManager accessManager_, address wETH_, address dai_) {
+    constructor(IKaliAccessManager accessManager_, address dai_) {
         accessManager = accessManager_;
         dai = dai_;
-        wETH = wETH_;
+        //wETH = wETH_;
     }
 
     function setExtension(bytes calldata extensionData) public nonReentrant virtual {
-        (address _purchaseToken, uint96 _purchaseLimit, uint256 _goal) 
+        (address _purchaseToken, uint96 _purchaseMinimum, uint256 _goal) 
             = abi.decode(extensionData, (address, uint96, uint256));
         
         // if (purchaseMultiplier == 0) revert NullMultiplier();
         dao = msg.sender;
         goal = _goal;
-        purchaseLimit = _purchaseLimit;
+        purchaseMinimum = _purchaseMinimum;
         fundingERC20 = _purchaseToken;
 
-        emit ExtensionSet(msg.sender, fundingERC20, purchaseLimit, goal);
+        emit ExtensionSet(msg.sender, fundingERC20, purchaseMinimum, goal);
     }
 
     function joinList(uint256 listId, bytes32[] calldata merkleProof) public virtual {
@@ -89,7 +89,7 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
         bytes32 s
     ) public virtual nonReentrant {
         if(complete) revert SaleEnded();
-        if(value < purchaseLimit && value < (goal - totalFunds)) revert BadValue();
+        if(value < purchaseMinimum && value < (goal - totalFunds)) revert BadValue();
 
         uint256 singleContribution;
         if (value > goal - totalFunds){
@@ -155,11 +155,12 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
 
         dai._safeTransferFrom(address(this), dao, totalFunds);
 
-        uint[] memory shares;
+        uint[] memory shares = new uint[](members.length);
         for (uint x = 0; x < members.length; x++){
             shares[x] = (95000 * contributions[members[x]]) / goal;
             IKaliShareManager(dao).mintShares(members[x], shares[x]);
         }
+        IKaliShareManager(dao).initPropertyValue(totalFunds / 10 ** 18);
         
         distributed = true;
         emit ExtensionCalled(members, shares);

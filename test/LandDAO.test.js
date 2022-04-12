@@ -1037,19 +1037,19 @@ describe("LandDAO", function () {
     )
     await capCall.deployed()
 
-    (address[] memory _members, uint256[] memory _memberShare, uint256 _goal, uint256 _period, uint256 _daoValue, uint256 _numShares) 
-            = abi.decode(extensionData, (address[], uint256[], uint256, uint256, uint256, uint256));
 
     let payload = ethers.utils.defaultAbiCoder.encode(
-      ["address", "uint96", "uint256"],
-      [purchaseToken.address, getBigNumber(1000), getBigNumber(100)]
+      ["uint256", "uint256"],
+      [getBigNumber(1000), minVoteTime]
     )
 
-    await land.propose(ProposalType["EXTENSION"], "TEST", [wethAddress], [3], [payload])
+    await land.propose(ProposalType["EXTENSION"], "TEST", [capCall.address], [3], [payload])
     await land.vote(1, true)
     await advanceTime(minVoteTime + 1)
+    // expect (await land.processProposal(1)).to.emit(land, 'FirstAction').withArgs(getBigNumber(1000))
     await land.processProposal(1)
-    expect(await land.extensions(wethAddress)).to.equal(true)
+    expect(await land.extensions(capCall.address)).to.equal(true)
+    expect(await land.capitalCall()).to.equal(capCall.address)
   })
   // it("Should process extension proposal - LandDAOcrowdsale with ETH", async function () {
   //   // Instantiate LandDAO
@@ -1141,7 +1141,6 @@ describe("LandDAO", function () {
     let LandDAOcrowdsale = await ethers.getContractFactory("LandDAOcrowdsale")
     let landDAOcrowdsale = await LandDAOcrowdsale.deploy(
       landWhitelistManager.address,
-      wethAddress,
       purchaseToken.address
     )
     await landDAOcrowdsale.deployed()
@@ -1155,9 +1154,10 @@ describe("LandDAO", function () {
       ["address", "uint96", "uint256"],
       [purchaseToken.address, getBigNumber(1000), getBigNumber(100)]
     )
+    
     expect(await landDAOcrowdsale.goal()).to.equal(getBigNumber(0))
     expect(await landDAOcrowdsale.fundingERC20()).to.equal("0x0000000000000000000000000000000000000000")
-    expect(await landDAOcrowdsale.purchaseLimit()).to.equal(getBigNumber(0))
+    expect(await landDAOcrowdsale.purchaseMinimum()).to.equal(getBigNumber(0))
     expect(await landDAOcrowdsale.totalFunds()).to.equal(getBigNumber(0))
     
     await land.propose(ProposalType["EXTENSION"], "TEST", [landDAOcrowdsale.address], [2], [payload])
@@ -1168,7 +1168,7 @@ describe("LandDAO", function () {
     expect(await landDAOcrowdsale.goal()).to.equal(getBigNumber(100))
     expect(await landDAOcrowdsale.fundingERC20()).to.equal(purchaseToken.address)
     expect(await landDAOcrowdsale.dai()).to.equal(purchaseToken.address)
-    expect(await landDAOcrowdsale.purchaseLimit()).to.equal(getBigNumber(1000))
+    expect(await landDAOcrowdsale.purchaseMinimum()).to.equal(getBigNumber(1000))
     expect(await landDAOcrowdsale.totalFunds()).to.equal(getBigNumber(0))
 
     const result = await signDaiPermit(ethers.provider, purchaseToken.address, alice.address, landDAOcrowdsale.address);
@@ -1187,7 +1187,6 @@ describe("LandDAO", function () {
     expect(await landDAOcrowdsale.members(0)).to.equal(alice.address)
     expect(await landDAOcrowdsale.totalFunds()).to.equal(getBigNumber(100))
     expect(await landDAOcrowdsale.complete()).to.be.true
-    
     await landDAOcrowdsale.callExtension()
     
     expect(await purchaseToken.balanceOf(land.address)).to.equal(
@@ -1311,7 +1310,6 @@ describe("LandDAO", function () {
     let LandDAOcrowdsale = await ethers.getContractFactory("LandDAOcrowdsale")
     let landDAOcrowdsale = await LandDAOcrowdsale.deploy(
       landWhitelistManager.address,
-      wethAddress,
       purchaseToken.address
     )
     await landDAOcrowdsale.deployed()
@@ -1389,7 +1387,6 @@ describe("LandDAO", function () {
     let LandDAOcrowdsale = await ethers.getContractFactory("LandDAOcrowdsale")
     let landDAOcrowdsale = await LandDAOcrowdsale.deploy(
       landWhitelistManager.address,
-      wethAddress,
       purchaseToken.address
     )
     await landDAOcrowdsale.deployed()
@@ -1466,7 +1463,6 @@ describe("LandDAO", function () {
     let LandDAOcrowdsale = await ethers.getContractFactory("LandDAOcrowdsale")
     let landDAOcrowdsale = await LandDAOcrowdsale.deploy(
       landWhitelistManager.address,
-      wethAddress,
       purchaseToken.address
     )
     await landDAOcrowdsale.deployed()
@@ -1572,7 +1568,6 @@ describe("LandDAO", function () {
     let LandDAOcrowdsale = await ethers.getContractFactory("LandDAOcrowdsale")
     let landDAOcrowdsale = await LandDAOcrowdsale.deploy(
       landWhitelistManager.address,
-      wethAddress,
       purchaseToken.address
     )
     await landDAOcrowdsale.deployed()
@@ -1656,7 +1651,6 @@ describe("LandDAO", function () {
     let LandDAOcrowdsale = await ethers.getContractFactory("LandDAOcrowdsale")
     let landDAOcrowdsale = await LandDAOcrowdsale.deploy(
       landWhitelistManager.address,
-      wethAddress,
       purchaseToken.address
     )
     await landDAOcrowdsale.deployed()

@@ -42,6 +42,10 @@ contract LandDAO is Multicall, ReentrancyGuard {
 
     event ProposalProcessed(uint256 indexed proposal, bool indexed didProposalPass);
 
+    event FirstAction(uint goal);
+
+    event SecondAction(uint goal);
+
     /*///////////////////////////////////////////////////////////////
                             ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -548,16 +552,45 @@ contract LandDAO is Multicall, ReentrancyGuard {
                 
                 if (prop.proposalType == ProposalType.EXTENSION) {
                     for (uint256 i; i < prop.accounts.length; i++) {
-                        if (prop.amounts[i] == 1) 
-                            extensions[prop.accounts[i]] = !extensions[prop.accounts[i]];
-                        if (prop.amounts[i] == 2)
-                            crowdFund = prop.accounts[i];
-                        if (prop.amounts[i] == 3)
+                        if (prop.amounts[i] == 3){
                             capitalCall = prop.accounts[i];
-                        if (prop.amounts[i] == 4)
-                            tokenSale = prop.accounts[i];
-                        if (prop.payloads[i].length > 3) IKaliDAOextension(prop.accounts[i])
-                            .setExtension(prop.payloads[i]);
+                            (uint256 _goal, uint256 _period) 
+                                = abi.decode(prop.payloads[i], (uint256, uint256));
+                            //emit FirstAction(_goal);
+                            uint256[] memory memberShare = new uint256[](members.length);
+                            for (uint x = 0; x < members.length; x++){
+                                //memberShare.push(balanceOf[members[x]]);
+                                memberShare[x] = balanceOf[members[x]];
+                            }
+                            //return(false, new bytes[](prop.accounts.length));
+                            //emit SecondAction(_goal);
+                            bytes memory newPayload = abi.encode(
+                                members,
+                                memberShare,
+                                _goal,
+                                _period,
+                                propertyValue,
+                                totalSupply
+                            );
+                            if (prop.payloads[i].length > 0){
+                                IKaliDAOextension(prop.accounts[i]).setExtension(newPayload);
+                                extensions[prop.accounts[i]] = true;
+                            } 
+                        }
+                        else {
+                            if (prop.amounts[i] == 2)
+                                crowdFund = prop.accounts[i];
+                                emit FirstAction(20);
+                            if (prop.amounts[i] == 4)
+                                tokenSale = prop.accounts[i];
+                            if (prop.payloads[i].length > 0) IKaliDAOextension(prop.accounts[i])
+                                .setExtension(prop.payloads[i]);
+                        }
+
+                        if (prop.amounts[i] == 0) 
+                            extensions[prop.accounts[i]] = false;
+                        else
+                            extensions[prop.accounts[i]] = true;
                     }
                 }
                 
@@ -585,6 +618,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
                     uint funds = IDAIPermit(dai).balanceOf(address(this));
                     if (funds > totalLoot + reservedLoot){
                         _distributeLoot(funds - totalLoot);
+                        propertyValue -= funds - totalLoot;
                     }
                 }
                 
@@ -699,6 +733,10 @@ contract LandDAO is Multicall, ReentrancyGuard {
         _mint(to, amount);
         if (pricePerShare > 0)
             _adjustPropertyValue(amount, pricePerShare);
+    }
+
+    function initPropertyValue(uint _value) public onlyExtension virtual {
+        propertyValue = _value;
     }
 
     function _adjustPropertyValue(uint32 amount, uint32 pricePerShare) internal virtual {

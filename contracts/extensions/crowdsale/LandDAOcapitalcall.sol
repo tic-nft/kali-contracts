@@ -88,7 +88,7 @@ contract LandDAOcapitalcall is Multicall, ReentrancyGuard {
         goal = _goal;
         members = _members;
         for (uint x = 0; x < _memberShare.length; x++){
-            memberShare[members[x]] = _memberShare[x];
+            memberShare[members[x]] = _goal * _memberShare[x] / _numShares;
         }
         period = _period;
         startTime = block.timestamp;
