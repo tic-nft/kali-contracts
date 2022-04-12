@@ -79,8 +79,7 @@ contract LandDAOcrowdsale is Multicall, ReentrancyGuard {
         );
     }
 
-    function contribute(
-        //IERC20Permit token, 
+    function contribute( 
         uint256 value,
         uint256 nonce,
         uint256 deadline,

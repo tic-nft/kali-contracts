@@ -64,6 +64,8 @@ describe("LandDAOIntegration", function () {
   let landWhitelistManager
   let LandDAOcrowdsale
   let landDAOcrowdsale
+  let CapCall
+  let capCall
 
 
   before(async () => {
@@ -385,22 +387,77 @@ describe("LandDAOIntegration", function () {
   it("Pay a dividend", async function () {
     result = await signDaiPermit(ethers.provider, purchaseToken.address, proposer.address, land.address)
 
-    await land.depositDividend(getBigNumber(125000), result.nonce, result.expiry, result.v, result.r, result.s)
+    let divPayment = 125000
+
+    await land.depositDividend(getBigNumber(divPayment), result.nonce, result.expiry, result.v, result.r, result.s)
 
     expect(await purchaseToken.balanceOf(proposer.address)).to.equal(getBigNumber(2225000))
     expect(await purchaseToken.balanceOf(land.address)).to.equal(getBigNumber(275000))
 
-    // let proposerPerc = getBigNumber((await land.balanceOf(proposer.address))).div(getBigNumber(await land.totalSupply()));
-    // let alicePerc = (await land.balanceOf(alice.address)) / (await land.totalSupply());
-    // let bobPerc = (await land.balanceOf(bob.address)) / (await land.totalSupply());
-    // let charliePerc = (await land.balanceOf(charlie.address)) / (await land.totalSupply());
-    // let dougPerc = (await land.balanceOf(doug.address)) / (await land.totalSupply());
+    expect(await land.lootBalanceOf(proposer.address)).to.equal(await lootDivCalc(divPayment, proposer, land))
+    expect(await land.lootBalanceOf(alice.address)).to.equal(await lootDivCalc(divPayment, alice, land))
+    expect(await land.lootBalanceOf(bob.address)).to.equal(await lootDivCalc(divPayment, bob, land))
+    expect(await land.lootBalanceOf(charlie.address)).to.equal(await lootDivCalc(divPayment, charlie, land))
+    expect(await land.lootBalanceOf(doug.address)).to.equal(await lootDivCalc(divPayment, doug, land))
+  })
 
-    expect(await land.lootBalanceOf(proposer.address)).to.equal(await lootDivCalc(125000, proposer, land))
-    expect(await land.lootBalanceOf(alice.address)).to.equal(await lootDivCalc(125000, alice, land))
-    expect(await land.lootBalanceOf(bob.address)).to.equal(await lootDivCalc(125000, bob, land))
-    expect(await land.lootBalanceOf(charlie.address)).to.equal(await lootDivCalc(125000, charlie, land))
-    expect(await land.lootBalanceOf(doug.address)).to.equal(await lootDivCalc(125000, doug, land))
+  it("Call a Capital call", async function () {
+    CapCall = await ethers.getContractFactory("LandDAOcapitalcall")
+    capCall = await CapCall.deploy(
+      landWhitelistManager.address,
+      dai.address
+    )
+    await capCall.deployed()
+
+    let payload = ethers.utils.defaultAbiCoder.encode(
+      ["uint256", "uint256"],
+      [getBigNumber(50000), minVoteTime]
+    )
+
+    await land.propose(ProposalType["EXTENSION"], "TEST", [capCall.address], [3], [payload])
+
+    let currentProposal = await land.proposalCount();
+    await land.vote(currentProposal, true)
+    await land.connect(charlie).vote(currentProposal, true)
+    await advanceTime(minVoteTime + 1)
+    await land.processProposal(currentProposal)
+
+    expect(await capCall.period()).to.equal(minVoteTime)
+    expect(await capCall.goal()).to.equal(getBigNumber(50000))
+    expect(await capCall.memberShare(proposer.address)).to.equal(await lootDivCalc(50000, proposer, land))
+    expect(await capCall.memberShare(doug.address)).to.equal(await lootDivCalc(50000, doug, land))
+    expect(await capCall.contributions(proposer.address)).to.equal(0)
+    expect(await capCall.members(0)).to.equal(proposer.address)
+    expect(await capCall.members(4)).to.equal(doug.address)
+  })
+
+  it("Contribute to capital call, first fail with too much", async function () {
+    
+    expect(await capCall.connect(alice).contribute(getBigNumber(3000)).should.be.reverted)
+    expect(await land.connect(bob).contributeLoot(getBigNumber(3000)).should.be.reverted)
+    expect(await land.connect(edward).contributeLoot(getBigNumber(400)).should.be.reverted)
+
+  })
+
+  it("Contribute to something that makes sense", async function () {
+    
+    let aliceBalance = await purchaseToken.balanceOf(alice.address)
+    let bobBalance = await land.lootBalanceOf(bob.address)
+
+    result = await signDaiPermit(ethers.provider, purchaseToken.address, alice.address, capCall.address)
+    console.log("first")
+    await capCall.connect(alice).contribute(getBigNumber(1000), result.nonce, result.expiry, result.v, result.r, result.s)
+    console.log("second")
+    await land.connect(bob).contributeLoot(getBigNumber(1000), capCall.address)
+    console.log("third")
+    expect(await land.connect(edward).contributeLoot(getBigNumber(400), capCall.address).should.be.reverted)
+
+    expect(await capCall.contributions(alice.address)).to.equal(getBigNumber(1000))
+    expect(await capCall.contributions(bob.address)).to.equal(getBigNumber(1000))
+    expect(await capCall.contributions(proposer.address)).to.equal(0)
+
+    expect(await land.lootBalanceOf(bob.address)).to.equal(bobBalance.sub(getBigNumber(1000)))
+    expect(await purchaseToken.balanceOf(alice.address)).to.equal(aliceBalance.sub(getBigNumber(1000)))
   })
 
 

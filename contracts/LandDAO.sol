@@ -346,7 +346,7 @@ contract LandDAO is Multicall, ReentrancyGuard {
 
         if (proposalType == ProposalType.MANAGER) if (accounts[0] == address(0)) revert ZeroManager();
         
-        if (proposalType == ProposalType.PURCHASE) if (IDAIPermit(dai).balanceOf(address(this)) < amounts[0]) revert InsufficientFunds();
+        if (proposalType == ProposalType.PURCHASE) if (IDAIPermit(dai).balanceOf(address(this)) - totalLoot < amounts[0]) revert InsufficientFunds();
 
         bool selfSponsor;
 

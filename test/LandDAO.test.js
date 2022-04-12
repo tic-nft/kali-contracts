@@ -1032,7 +1032,6 @@ describe("LandDAO", function () {
     let CapCall = await ethers.getContractFactory("LandDAOcapitalcall")
     let capCall = await CapCall.deploy(
       landWhitelistManager.address,
-      wethAddress,
       dai.address
     )
     await capCall.deployed()
@@ -1346,6 +1345,9 @@ describe("LandDAO", function () {
     expect(await purchaseToken.balanceOf(land.address)).to.equal(getBigNumber(100))
     expect(await purchaseToken.balanceOf(landDAOcrowdsale.address)).to.equal(getBigNumber(0))
     expect(await land.lootBalanceOf(proposer.address)).to.equal(getBigNumber(0))
+
+    // revert if you are asking for more Dai than is available
+    expect(await land.propose(ProposalType["PURCHASE"], "TEST", [alice.address], [getBigNumber(3000)], [0x00]).to.be.reverted)
 
     await land.propose(ProposalType["PURCHASE"], "TEST", [alice.address], [getBigNumber(90)], [0x00])
     await land.vote(2, true)

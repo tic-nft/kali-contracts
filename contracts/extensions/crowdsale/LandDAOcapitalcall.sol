@@ -50,8 +50,6 @@ contract LandDAOcapitalcall is Multicall, ReentrancyGuard {
     
     IKaliAccessManager private immutable accessManager;
 
-    address private immutable wETH;
-
     address public immutable dai;
 
     address public dao;
@@ -72,10 +70,9 @@ contract LandDAOcapitalcall is Multicall, ReentrancyGuard {
         _;
     }
 
-    constructor(IKaliAccessManager accessManager_, address wETH_, address dai_) {
+    constructor(IKaliAccessManager accessManager_, address dai_) {
         accessManager = accessManager_;
         dai = dai_;
-        wETH = wETH_;
     }
 
     function setExtension(bytes calldata extensionData) public nonReentrant virtual {
@@ -106,7 +103,6 @@ contract LandDAOcapitalcall is Multicall, ReentrancyGuard {
     }
 
     function contribute(
-        //IERC20Permit token, 
         uint256 value,
         uint256 nonce,
         uint256 deadline,
